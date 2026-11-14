@@ -1,3 +1,17 @@
+# AEmulator Moon Valley modification notice
+
+**AEmulator Moon Valley** is a modified fork of
+[somerandomusernam2/AEmulator-Plus](https://github.com/somerandomusernam2/AEmulator-Plus)
+(version `0.0.0.3.12`). It remains licensed under the GNU General Public License, version 3; see [LICENSE](LICENSE).
+
+Modifications for Moon Valley are dated from 2026-11-14: the app name and package id
+(`app.aemu.moonvalley`), a moonlit colour palette, a starry-sky home screen with a moon-phase button, and the
+Moon Valley easter egg (`app/src/main/java/app/aemu/ui/MoonValley.kt`). Files modified for Moon Valley carry a
+dated "Moon Valley" / "Modified for AEmulator Moon Valley" notice. All AEmulator Plus, Sunset and AEmulator notices
+below are retained unchanged.
+
+---
+
 # AEmulator Plus modification notice
 
 **AEmulator Plus** is a modified fork of

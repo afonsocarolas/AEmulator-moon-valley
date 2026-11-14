@@ -21,30 +21,30 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-// Modified for AEmulator Sunset on 2026-09-30: sunset-orange Material 3 palette.
+// Modified for AEmulator Moon Valley on 2026-11-14: moonlit Material 3 palette (midnight indigo, moon silver, lantern gold).
 private val Light = lightColorScheme(
-    primary = Color(0xFFF4511E), onPrimary = Color.White,
-    primaryContainer = Color(0xFFFFDBCF), onPrimaryContainer = Color(0xFF3B0900),
-    secondary = Color(0xFF77574D), onSecondary = Color.White,
-    secondaryContainer = Color(0xFFFFDBCF), onSecondaryContainer = Color(0xFF2C150F),
-    tertiary = Color(0xFF6D5D2F), onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFF7E2A7), onTertiaryContainer = Color(0xFF231B00),
-    background = Color(0xFFFFF8F5), surface = Color(0xFFFFF8F5),
-    surfaceContainer = Color(0xFFF8ECE7), surfaceContainerHigh = Color(0xFFF2E6E1),
-    surfaceContainerHighest = Color(0xFFECE0DB), surfaceContainerLow = Color(0xFFFFF1EC),
+    primary = Color(0xFF3F4A9E), onPrimary = Color.White,
+    primaryContainer = Color(0xFFDDE1FF), onPrimaryContainer = Color(0xFF00105C),
+    secondary = Color(0xFF5B5D72), onSecondary = Color.White,
+    secondaryContainer = Color(0xFFE0E0F9), onSecondaryContainer = Color(0xFF181A2C),
+    tertiary = Color(0xFF7A5900), onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFFFDEA0), onTertiaryContainer = Color(0xFF261900),
+    background = Color(0xFFF7F7FF), surface = Color(0xFFF7F7FF),
+    surfaceContainer = Color(0xFFECEDF8), surfaceContainerHigh = Color(0xFFE6E7F3),
+    surfaceContainerHighest = Color(0xFFE0E1ED), surfaceContainerLow = Color(0xFFF2F2FD),
     error = Color(0xFFBA1A1A),
 )
 
 private val Dark = darkColorScheme(
-    primary = Color(0xFFFFB59F), onPrimary = Color(0xFF5F1600),
-    primaryContainer = Color(0xFF862200), onPrimaryContainer = Color(0xFFFFDBCF),
-    secondary = Color(0xFFE7BDB0), onSecondary = Color(0xFF442A22),
-    secondaryContainer = Color(0xFF5D4037), onSecondaryContainer = Color(0xFFFFDBCF),
-    tertiary = Color(0xFFDAC68D), onTertiary = Color(0xFF3B2F05),
-    tertiaryContainer = Color(0xFF534619), onTertiaryContainer = Color(0xFFF7E2A7),
-    background = Color(0xFF18120F), surface = Color(0xFF18120F),
-    surfaceContainer = Color(0xFF251D1A), surfaceContainerHigh = Color(0xFF302825),
-    surfaceContainerHighest = Color(0xFF3B322F), surfaceContainerLow = Color(0xFF211A17),
+    primary = Color(0xFFBAC3FF), onPrimary = Color(0xFF0E1E6E),
+    primaryContainer = Color(0xFF263385), onPrimaryContainer = Color(0xFFDDE1FF),
+    secondary = Color(0xFFC4C5DD), onSecondary = Color(0xFF2D2F42),
+    secondaryContainer = Color(0xFF434559), onSecondaryContainer = Color(0xFFE0E0F9),
+    tertiary = Color(0xFFF5C04A), onTertiary = Color(0xFF402D00),
+    tertiaryContainer = Color(0xFF5C4300), onTertiaryContainer = Color(0xFFFFDEA0),
+    background = Color(0xFF0B0E1F), surface = Color(0xFF0B0E1F),
+    surfaceContainer = Color(0xFF161A2E), surfaceContainerHigh = Color(0xFF20243A),
+    surfaceContainerHighest = Color(0xFF2B2F46), surfaceContainerLow = Color(0xFF121528),
 )
 
 private val AppShapes = Shapes(

@@ -300,12 +300,23 @@ fun Library(model: LibraryModel) {
         }
     }
 
+    // Moon Valley, 2026-11-14: a starry sky over a valley behind the library; the moon in the bar hides an easter egg
+    var moonEgg by remember { mutableStateOf(false) }
+    if (moonEgg) MoonValleyEgg(onDismiss = { moonEgg = false })
+    Box(Modifier.fillMaxSize()) {
+    MoonSky(Modifier.matchParentSize())
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             LargeFlexibleTopAppBar(
                 title = { SunsetTitle() },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f),
+                ),
                 actions = {
+                    MoonPhaseButton(onFullMoon = { moonEgg = true })
                     IconButton(onClick = { ctx.startActivity(Intent(ctx, RomCatalogActivity::class.java)) }) {
                         Icon(Icons.Rounded.List, stringResource(R.string.catalog_title))
                     }
@@ -475,6 +486,7 @@ fun Library(model: LibraryModel) {
             }
         }
     }
+    } // Box (MoonSky)
 
     settingsFor?.let { img ->
         SettingsSheet(img, onDismiss = { settingsFor = null }, onSave = { s, name -> model.updateSettings(img, s, name); settingsFor = null })

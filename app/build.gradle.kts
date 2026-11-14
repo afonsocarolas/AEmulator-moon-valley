@@ -53,7 +53,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "app.aemu.plus" // Modified for AEmulator Plus, 2026-10-04: single variant, no clone
+        applicationId = "app.aemu.moonvalley" // Modified for AEmulator Moon Valley, 2026-11-14: own id, installs next to AEmulator Plus
         minSdk = 26
         // 28: гостевые бинарники запускаются из каталога данных приложения (W^X для targetSdk>=29)
         //noinspection ExpiredTargetSdkVersion
@@ -141,7 +141,7 @@ tasks.register<Copy>("copyReleaseApks") {
     val v = android.defaultConfig.versionName
     from(layout.buildDirectory.dir("outputs/apk/release")) {
         include("*.apk")
-        rename { "AEmulator-Plus-app.aemu.plus.apk" }
+        rename { "AEmulator-MoonValley-app.aemu.moonvalley.apk" }
     }
     into(rootProject.layout.projectDirectory.dir("release-apks/$v"))
 }

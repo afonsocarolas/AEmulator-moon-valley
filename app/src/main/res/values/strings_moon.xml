@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Added for AEmulator Moon Valley, 2026-11-14: the moon UI and its easter egg (other languages fall back to these) -->
+<resources>
+    <string name="moon_button">Moon</string>
+    <string name="moon_egg_title">Welcome to Moon Valley</string>
+    <string name="moon_egg_close">Goodnight</string>
+    <string-array name="moon_egg_lines">
+        <item>The moon has been watching your firmwares boot. It is very proud.</item>
+        <item>Somewhere in this valley, a Gingerbread phone is still optimizing apps.</item>
+        <item>Full moon reached. Your emulator now runs 0% faster, but feels 100% calmer.</item>
+        <item>Shh… the old Androids are sleeping under the stars.</item>
+        <item>You found the secret valley. Tell no one. (Or tell everyone.)</item>
+    </string-array>
+</resources>
