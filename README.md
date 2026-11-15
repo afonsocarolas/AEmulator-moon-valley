@@ -19,6 +19,7 @@ AEmulator Moon Valley boots a real Android 1.0–17 system image straight from a
 - **Moon UI**: a midnight-indigo and moon-silver Material 3 palette (light and dark), and a home screen with a twinkling starry sky over a moonlit valley
 - **Moon in the top bar**: every tap waxes it from crescent towards full moon
 - **Easter egg**: 🤫 reach the full moon… (hint: seven is a lunar number — the version line in App settings › About knows it too)
+- **New icon** by Chris
 - Installs next to AEmulator Plus (package `app.aemu.moonvalley`)
 
 ## Features (from AEmulator Plus)
@@ -56,6 +57,8 @@ cd AEmulator-moon-valley
 ```
 
 ## Credits
+
+App icon by Chris, made for AEmulator Moon Valley.
 
 AEmulator Moon Valley (via AEmulator Plus) grew out of the HTC Desire HD and HTC One M7 emulators by [the original author](https://t.me/istratiit_ech) — their engine made this project possible.
 
