@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/logo.png" width="128" alt="AEmulator Moon Valley logo"/>
+<img src="docs/assets/logo-moonvalley.png" width="128" alt="AEmulator Moon Valley logo"/>
 
 # 🌙 AEmulator Moon Valley
 
