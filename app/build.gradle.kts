@@ -58,8 +58,8 @@ android {
         // 28: гостевые бинарники запускаются из каталога данных приложения (W^X для targetSdk>=29)
         //noinspection ExpiredTargetSdkVersion
         targetSdk = 28
-        versionCode = 36
-        versionName = "0.0.0.3.14" // <AEmulator base>.<Moon Valley release>
+        versionCode = 37
+        versionName = "0.0.0.3.15" // <AEmulator base>.<Moon Valley release>
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 

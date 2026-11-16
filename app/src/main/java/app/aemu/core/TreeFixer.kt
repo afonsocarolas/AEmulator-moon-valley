@@ -1578,7 +1578,11 @@ class TreeFixer(
             // feature SystemServer never starts the wifip2p service ("Manager wrapper not available: wifip2p"), the call hits a null
             // manager, "Failed to boot service com.huawei.server.wifi.WifiEnhanceService" ends system_server and zygote follows with 137.
             val huaweiWifiEnhance = File(root, "system/framework/hwWifiEnhance-service.jar").isFile
-            if ((img.api >= 34 || huaweiWifiEnhance) && !declared) {
+            // Modified for AEmulator Moon Valley (2026-11-16). Samsung turns Wi-Fi Display (Smart View) on well before One UI 8:
+            // a Galaxy S10e on One UI 4.1 (api 31) died the same way ("system_server died in WifiDisplayAdapter", zygote 137).
+            // WifiDisplayAdapter refuses to start without the feature from Android 12 on, so Samsung trees from api 31 get it too.
+            val samsungWifiDisplay = img.api >= 31 && isSamsungFirmware()
+            if ((img.api >= 34 || huaweiWifiEnhance || samsungWifiDisplay) && !declared) {
                 f.writeText("<permissions><feature name=\"android.hardware.wifi.direct\" /></permissions>")
                 log("wifi direct: android.hardware.wifi.direct declared (" + (if (huaweiWifiEnhance) "Huawei WifiEnhanceService needs the wifip2p manager" else "WifiDisplayAdapter refuses to start without it") + ")")
             } else f.delete()
