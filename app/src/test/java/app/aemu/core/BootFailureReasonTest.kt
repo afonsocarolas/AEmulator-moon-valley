@@ -52,6 +52,28 @@ Caused by: java.lang.NullPointerException: Attempt to invoke a method on a null 
 
     @Test fun longReasonsAreCut() {
         val s = BootFailureReason.explain(listOf(r("Watchdog", "*** WATCHDOG KILLING SYSTEM PROCESS: " + "x".repeat(2000))))!!
-        assertEquals(420, s.length)
+        assertEquals(560, s.length)
+    }
+
+    @Test fun theFirstServiceThatDidNotStartIsNamed() {
+        // the Android 16 Qualcomm image: StorageManagerService fails first, ArtManagerLocal dies of the gap later
+        val recs = listOf(
+            r("SystemServer", """BOOT FAILURE starting StorageManagerService
+java.lang.RuntimeException: Failed to start service com.android.server.StorageManagerService${'$'}Lifecycle: onStart threw an exception
+	at com.android.server.SystemServiceManager.startService(SystemServiceManager.java:282)
+Caused by: java.lang.IllegalStateException: Failed to find update_engine
+	at android.os.UpdateEngine.<init>(UpdateEngine.java:257)
+	... 7 more"""),
+            r("SystemServer", """BOOT FAILURE starting StorageStatsService
+java.lang.RuntimeException: Failed to start service
+Caused by: java.lang.NullPointerException"""),
+            r("AndroidRuntime", """*** FATAL EXCEPTION IN SYSTEM PROCESS: main
+java.lang.NullPointerException: Attempt to invoke virtual method 'java.lang.Class java.lang.Object.getClass()' on a null object reference
+	at com.android.server.art.ArtManagerLocal${'$'}Injector.getStorageManager(ArtManagerLocal.java:1789)
+	at com.android.server.art.ArtManagerLocal${'$'}Injector.<init>(ArtManagerLocal.java:1672)"""),
+        )
+        val s = BootFailureReason.explain(recs)!!
+        assertTrue(s, s.contains("— first failure: StorageManagerService (IllegalStateException: Failed to find update_engine)"))
+        assertTrue(s, !s.contains("StorageStatsService"))
     }
 }

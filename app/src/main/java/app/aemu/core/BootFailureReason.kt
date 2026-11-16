@@ -13,7 +13,21 @@ import java.io.File
 object BootFailureReason {
     const val WATCHDOG_MARK = "WATCHDOG KILLING SYSTEM PROCESS"
     const val FATAL_MARK = "FATAL EXCEPTION IN SYSTEM PROCESS"
-    private const val MAX = 420
+    /** system_server's own note when one of its services fails to start; it carries on, and dies later of the gap */
+    const val BOOT_FAILURE_MARK = "BOOT FAILURE starting "
+    private const val MAX = 560
+
+    /** " — first failure: <service> (<root cause>)" for the first service that did not start, or "". */
+    private fun firstBootFailure(recs: List<GuestLog.Rec>, before: Int): String {
+        val i = recs.subList(0, before.coerceIn(0, recs.size)).indexOfFirst { BOOT_FAILURE_MARK in it.msg }
+        if (i < 0) return ""
+        val lines = recs[i].msg.lines().toMutableList()
+        if (lines.none { it.trim().startsWith("Caused by:") }) lines += recs.drop(i + 1).take(40).flatMap { it.msg.lines() }
+        val service = lines.first().substringAfter(BOOT_FAILURE_MARK).trim()
+        val cause = lines.firstOrNull { it.trim().startsWith("Caused by:") }?.trim()?.removePrefix("Caused by:")?.trim()
+            ?.removePrefix("java.lang.")
+        return " — first failure: " + service + (if (cause != null) " ($cause)" else "")
+    }
 
     private fun frame(line: String): String? = line.trim().takeIf { it.startsWith("at ") }?.removePrefix("at ")?.substringBefore('(')
 
@@ -27,6 +41,7 @@ object BootFailureReason {
             val sb = StringBuilder("system_server was killed by Android's watchdog")
             if (why.isNotEmpty()) sb.append(": ").append(why)
             if (frames.isNotEmpty()) sb.append(" — stuck in ").append(frames.joinToString(" ← "))
+            sb.append(firstBootFailure(recs, wd))
             return sb.append(" (zygote exited with 137 as a result)").toString().take(MAX)
         }
         val fe = recs.indexOfLast { FATAL_MARK in it.msg }
@@ -43,6 +58,7 @@ object BootFailureReason {
             if (ex != null) sb.append(": ").append(ex)
             if (frames.isNotEmpty()) sb.append(" — at ").append(frames.joinToString(" ← "))
             if (cause != null && cause != ex) sb.append(" — caused by ").append(cause)
+            sb.append(firstBootFailure(recs, fe))
             return sb.append(" (zygote exited with 137 as a result)").toString().take(MAX)
         }
         return null
