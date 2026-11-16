@@ -79,6 +79,63 @@ object DexTools {
         return null
     }
 
+    /**
+     * Added for AEmulator Moon Valley (2026-11-16). code_item offsets of every void, non-abstract method called [name] in any
+     * class whose descriptor starts with [clsPrefix], as (class descriptor, code offset) pairs.
+     */
+    internal fun methodCodesInClasses(x: Dex, name: String, clsPrefix: String): List<Pair<String, Int>> {
+        val d = x.d
+        val out = ArrayList<Pair<String, Int>>()
+        for (c in 0 until x.classDefs) {
+            val def = x.classDefsOff + 32 * c
+            val cls = x.type(u4(d, def))
+            if (!cls.startsWith(clsPrefix)) continue
+            var o = u4(d, def + 24)
+            if (o == 0) continue
+            val sizes = IntArray(4)
+            for (i in 0 until 4) { val (v, n) = uleb(d, o); sizes[i] = v; o += n }
+            for (i in 0 until sizes[0] + sizes[1]) { o += uleb(d, o).second; o += uleb(d, o).second }
+            for (list in 2..3) {
+                var method = 0
+                for (i in 0 until sizes[list]) {
+                    val (diff, n1) = uleb(d, o); o += n1
+                    val (_, n2) = uleb(d, o); o += n2
+                    val (code, n3) = uleb(d, o); o += n3
+                    method += diff
+                    if (code != 0 && x.methodName(method) == name && x.protoReturn(x.methodProto(method)) == "V") out += cls to code
+                }
+            }
+        }
+        return out
+    }
+
+    /**
+     * Whether the code item at [code] loads one of the strings [strings] (const-string / const-string/jumbo). The
+     * instructions are walked one by one (switch and array payloads skipped), so an operand is never read as an opcode.
+     */
+    internal fun codeLoadsString(d: ByteArray, code: Int, strings: Set<Int>): Boolean {
+        val n = u4(d, code + 12)
+        val start = code + 16
+        if (n <= 0 || start + 2L * n > d.size) return false
+        var pc = 0
+        while (pc < n) {
+            val at = start + 2 * pc
+            val op = d[at].toInt() and 0xff
+            val hi = d[at + 1].toInt() and 0xff
+            val len = when {
+                op == 0 && hi == 1 -> 4 + 2 * u2(d, at + 2)                            // packed-switch payload
+                op == 0 && hi == 2 -> 2 + 4 * u2(d, at + 2)                            // sparse-switch payload
+                op == 0 && hi == 3 -> 4 + ((u2(d, at + 2).toLong() * u4(d, at + 4) + 1) / 2).toInt()   // fill-array-data payload
+                else -> insnLength(op)
+            }
+            if (pc + len > n) return false
+            if (op == 0x1a && u2(d, at + 2) in strings) return true
+            if (op == 0x1b && u4(d, at + 2) in strings) return true
+            pc += len
+        }
+        return false
+    }
+
     /** Indexes of the strings that start with [prefix]. */
     internal fun stringsStartingWith(x: Dex, prefix: String): Set<Int> {
         val out = HashSet<Int>()

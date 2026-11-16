@@ -136,4 +136,71 @@ class WatchdogPatchTest {
         assertFalse(WatchdogPatch.isStockPlusPatch(stock, stock))
         assertFalse(File(f.parentFile, f.name + ".aemu-chk").exists())
     }
+
+    // Added for AEmulator Moon Valley (2026-11-16): an optimised services.jar (Samsung One UI 8, Android 16) has no
+    // Watchdog.run(); the loop is inlined into Watchdog$$ExternalSyntheticLambda0.run(). Fixture: javac --release 8 + d8
+    // (build-tools 36.0.0, --min-api 26) of a Watchdog whose thread runs Lambda0 (the loop, with a switch before the kill
+    // message) and a second Lambda1.run() without the message, which must stay as it is.
+    private val inlinedDex: String =
+        "ZGV4CjAzOACSXpbBKDQJSHHyvN+w4T2JXn595VsY4HS8CAAAcAAAAHhWNBIAAAAAAAAAABwIAAArAAAAcAAAAA4AAAAcAQAACAAA" +
+        "AFQBAAAGAAAAtAEAAA8AAADkAQAAAwAAAFwCAAAABgAAvAIAAOgEAAAPBQAAFwUAABoFAAAdBQAAIAUAACQFAAAoBQAAYQUAAJoF" +
+        "AAC5BQAA0AUAAOQFAAD6BQAADgYAACkGAAA9BgAAUQYAAFQGAABYBgAAXQYAAIYGAACvBgAAvgYAAMIGAADFBgAA0QYAANkGAADc" +
+        "BgAA3wYAAOIGAADlBgAA6gYAAPIGAAD6BgAAAwcAAAgHAAARBwAAFgcAAB0HAAAnBwAAMQcAAEEHAAACAAAAAwAAAAcAAAAIAAAA" +
+        "CQAAAAoAAAALAAAADAAAAA0AAAAOAAAADwAAABAAAAARAAAAFwAAAAQAAAAIAAAAAAAAAAUAAAAJAAAAwAQAAAYAAAAJAAAAyAQA" +
+        "ABEAAAAMAAAAAAAAABIAAAAMAAAA0AQAABIAAAAMAAAA2AQAABMAAAAMAAAA4AQAABIAAAAMAAAAyAQAAAIABAAfAAAAAwAEAB8A" +
+        "AAAEAAcAIAAAAAQAAAAhAAAABAALACIAAAAKAAUAIwAAAAIABAABAAAAAgADACUAAAADAAQAAQAAAAMAAwAlAAAABAADAAEAAAAE" +
+        "AAUAGQAAAAQAAwAmAAAABQAHACQAAAAGAAMAAQAAAAkAAwABAAAACQABABoAAAAJAAIAGgAAAAkAAAAnAAAACwAGAAEAAAALAAMA" +
+        "JgAAAAIAAAAQAAAABgAAALgEAAAUAAAAAAAAAOEHAAAAAAAAAwAAABAAAAAGAAAAuAQAABUAAAAAAAAA8QcAAAAAAAAEAAAAAQAA" +
+        "AAYAAAAAAAAAFgAAAAAAAAABCAAAAAAAAAIAAgABAAAAkAQAAAYAAABwEAgAAABbAQAADgAHAAEAAwAAAJUEAABwAAAAEjAjAQ0A" +
+        "JgFdAAAAVGIAAFIiAwAsAkQAAAAaAh4AKAwaAh0AKAkaAhwAKAYaAhsAKAMaAhgAVGMAAFIzAwA3AyYAYgMFACIECQBwEAkABAAa" +
+        "BQAAbiALAFQADARuIAsAJAAMAlRkAABSRAMAtARFAAEEbjAKAAIBDABuEAwAAAAMAG4gBwADAA4AVGIAAFIjAwDYAwMBWSMDACi5" +
+        "AAIEAAAAAAABAAAAAgAAAAcAAAAPAAAADAAAAAkAAAAGAAAAAAMIAAMAAAAwdQAAAAAAAGDqAAAAAAAAkF8BAAAAAAACAAIAAQAA" +
+        "AJAEAAAGAAAAcBAIAAAAWwEBAA4AAwABAAIAAACjBAAADQAAAFQgAQASAVkBAwBiAAUAGgEpAG4gBwAQAA4AAAAEAAEAAwAAAKcE" +
+        "AAAZAAAAcBAIAAMAIgALACIBAgBwIAAAMQAaAigAcDANABACWzAEACIAAwBwIAIAMABbMAIADgAAAAIAAgAAAAAArQQAAAcAAABS" +
+        "AQMA2AEBAVkBAwAOAAAAAgABAAEAAACyBAAABgAAAFQQBABuEA4AAAAOAAQBAA4ABgAOawEVD2kBIw8fhwAFAA4AAgAOPOEABwEA" +
+        "DgAGAA4AAAABAAAABwAAAAEAAAABAAAAAQAAAAgAAAABAAAABAAAAAEAAAAGAAAAAgAAAAcACAAlKioqIFdBVENIRE9HIEtJTExJ" +
+        "TkcgU1lTVEVNIFBST0NFU1M6IAAGPGluaXQ+AAFJAAFKAAFMAAJMSgACTEwAN0xjb20vYW5kcm9pZC9zZXJ2ZXIvV2F0Y2hkb2ck" +
+        "JEV4dGVybmFsU3ludGhldGljTGFtYmRhMDsAN0xjb20vYW5kcm9pZC9zZXJ2ZXIvV2F0Y2hkb2ckJEV4dGVybmFsU3ludGhldGlj" +
+        "TGFtYmRhMTsAHUxjb20vYW5kcm9pZC9zZXJ2ZXIvV2F0Y2hkb2c7ABVMamF2YS9pby9QcmludFN0cmVhbTsAEkxqYXZhL2xhbmcv" +
+        "T2JqZWN0OwAUTGphdmEvbGFuZy9SdW5uYWJsZTsAEkxqYXZhL2xhbmcvU3RyaW5nOwAZTGphdmEvbGFuZy9TdHJpbmdCdWlsZGVy" +
+        "OwASTGphdmEvbGFuZy9TeXN0ZW07ABJMamF2YS9sYW5nL1RocmVhZDsAAVYAAlZMAANWTEwAJ1dhdGNoZG9nJCRFeHRlcm5hbFN5" +
+        "bnRoZXRpY0xhbWJkYTAuamF2YQAnV2F0Y2hkb2ckJEV4dGVybmFsU3ludGhldGljTGFtYmRhMS5qYXZhAA1XYXRjaGRvZy5qYXZh" +
+        "AAJbSgABYQAKYWRkTW9uaXRvcgAGYXBwZW5kAAFiAAFjAAFkAAFlAANmJDAABm1PdGhlcgAGbVN0YXRlAAdtVGhyZWFkAANvdXQA" +
+        "B3ByaW50bG4AA3J1bgAFc3RhcnQACHRvU3RyaW5nAAh3YXRjaGRvZwAOd2F0Y2hkb2cgcmVzZXQAnQF+fkQ4eyJiYWNrZW5kIjoi" +
+        "ZGV4IiwiY29tcGlsYXRpb24tbW9kZSI6ImRlYnVnIiwiaGFzLWNoZWNrc3VtcyI6ZmFsc2UsIm1pbi1hcGkiOjI2LCJzaGEtMSI6" +
+        "ImE3YWQxOGE3MDQ2MGI3OTlkMDQ4MmU0OTdjMTA5YTc1YmY3ZjkxZGUiLCJ2ZXJzaW9uIjoiOC4xMC45LWRldiJ9AAABAQEAEACA" +
+        "gAS8BQER2AUAAQEBARACgIAEyAcDEeQHAAMBAgIQAQABEASBgASQCAUB1AgBAfQIAAAADQAAAAAAAAABAAAAAAAAAAEAAAArAAAA" +
+        "cAAAAAIAAAAOAAAAHAEAAAMAAAAIAAAAVAEAAAQAAAAGAAAAtAEAAAUAAAAPAAAA5AEAAAYAAAADAAAAXAIAAAEgAAAHAAAAvAIA" +
+        "AAMgAAAGAAAAkAQAAAEQAAAGAAAAuAQAAAIgAAArAAAA6AQAAAAgAAADAAAA4QcAAAAQAAABAAAAHAgAAA=="
+
+    private fun inlined(): ByteArray = java.util.Base64.getDecoder().decode(inlinedDex)
+
+    private fun runCode(d: ByteArray, cls: String): Int =
+        DexTools.methodCodesInClasses(DexTools.Dex(d), "run", cls).single().second + 16
+
+    @Test fun inlinedLoopInTheLambdaIsPatched() {
+        val d = inlined()
+        val loop = runCode(d, "Lcom/android/server/Watchdog\$\$ExternalSyntheticLambda0;")
+        val other = runCode(d, "Lcom/android/server/Watchdog\$\$ExternalSyntheticLambda1;")
+        val otherBefore = d.copyOfRange(other, other + 8)
+        assertTrue(d[loop].toInt() != 0x0e)
+        val r = WatchdogPatch.patchDex(d)
+        assertEquals(WatchdogPatch.Outcome.PATCHED, r.outcome)
+        assertTrue(r.detail, r.detail.contains("ExternalSyntheticLambda0"))
+        assertEquals(0x0e, d[loop].toInt()); assertEquals(0, d[loop + 1].toInt())
+        assertArrayEquals(otherBefore, d.copyOfRange(other, other + 8))
+        assertTrue(headerValid(d))
+        assertEquals(WatchdogPatch.Outcome.ALREADY, WatchdogPatch.patchDex(d).outcome)
+    }
+
+    @Test fun inlinedDexWithoutKillMessageIsNotTouched() {
+        val d = inlined()
+        // break the message in place (same length), so no string starts with the mark any more
+        val mark = WatchdogPatch.KILL_MARK.toByteArray(Charsets.UTF_8)
+        val at = (0..d.size - mark.size).first { i -> mark.indices.all { d[i + it] == mark[it] } }
+        d[at] = '#'.code.toByte(); DexTools.fixHeader(d)
+        val before = d.clone()
+        assertEquals(WatchdogPatch.Outcome.UNEXPECTED, WatchdogPatch.patchDex(d).outcome)
+        assertArrayEquals(before, d)
+    }
 }

@@ -72,12 +72,25 @@ object WatchdogPatch {
         val found = try {
             DexTools.methodCode(x, method, cls, voidOnly = true)
         } catch (e: RuntimeException) { return Result(Outcome.UNEXPECTED, "unreadable class data: ${e.message}") }
-        val codes: List<Int> = found ?: return Result(Outcome.ABSENT)
-        if (codes.isEmpty()) return Result(Outcome.UNEXPECTED, "no $method() with code in the class")
-        if (codes.size != 1) return Result(Outcome.UNEXPECTED, "${codes.size} methods called $method")
-        val marked = try { DexTools.stringsStartingWith(x, mark).isNotEmpty() }
+        var codes: List<Int> = found ?: return Result(Outcome.ABSENT)
+        val markIds = try { DexTools.stringsStartingWith(x, mark) }
             catch (e: RuntimeException) { return Result(Outcome.UNEXPECTED, "unreadable string table: ${e.message}") }
-        if (!marked) return Result(Outcome.UNEXPECTED, "the dex has no \"$mark\" message")
+        var where = ""
+        // Modified for AEmulator Moon Valley (2026-11-16). An optimised services.jar (Samsung One UI 8, Android 16) has no
+        // Watchdog.run() of its own: the thread is started with `new Thread(this::run)` and the private run() is inlined into
+        // the synthetic lambda (Watchdog$$ExternalSyntheticLambdaN.run()). The loop is then found there instead: the one
+        // void run() among Watchdog's own nested classes that loads the kill message.
+        if (codes.isEmpty() && cls == CLASS_DESC && markIds.isNotEmpty()) {
+            val inner = try {
+                DexTools.methodCodesInClasses(x, method, cls.removeSuffix(";") + "$")
+                    .filter { DexTools.codeLoadsString(d, it.second, markIds) }
+            } catch (e: RuntimeException) { return Result(Outcome.UNEXPECTED, "unreadable nested class data: ${e.message}") }
+            if (inner.size > 1) return Result(Outcome.UNEXPECTED, "${inner.size} nested $method() methods with the kill message")
+            if (inner.size == 1) { codes = listOf(inner[0].second); where = inner[0].first }
+        }
+        if (codes.isEmpty()) return Result(Outcome.UNEXPECTED, "no $method() with code in the class nor in a nested class with the kill message")
+        if (codes.size != 1) return Result(Outcome.UNEXPECTED, "${codes.size} methods called $method")
+        if (markIds.isEmpty()) return Result(Outcome.UNEXPECTED, "the dex has no \"$mark\" message")
         val code = codes[0]
         val insnsSize = DexTools.u4(d, code + 12)
         val start = code + 16
@@ -91,7 +104,7 @@ object WatchdogPatch {
         d[start] = RETURN_VOID; d[start + 1] = 0
         for (k in 2 until 2 * len) d[start + k] = 0
         DexTools.fixHeader(d)
-        return Result(Outcome.PATCHED)
+        return Result(Outcome.PATCHED, if (where.isEmpty()) "" else "in $where")
     }
 
     /**
