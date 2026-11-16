@@ -1372,6 +1372,12 @@ open class VmActivity : ComponentActivity() {
         LaunchedEffect(state) { if (state == GuestVm.State.RUNNING || state == GuestVm.State.FAILED || state == GuestVm.State.STOPPED) cardOverride = null }
         val cardMinimized = cardOverride ?: (drawing && state == GuestVm.State.BOOTING)
         Box(Modifier.fillMaxSize()) {
+            // Moon Valley boot screen, 2026-11-16: a moonrise until the firmware draws its first frames
+            AnimatedVisibility(
+                visible = (state == GuestVm.State.PREPARING || state == GuestVm.State.BOOTING) && !drawing && !showLog,
+                enter = fadeIn(), exit = fadeOut(androidx.compose.animation.core.tween(700)),
+                modifier = Modifier.fillMaxSize(),
+            ) { MoonBootBackdrop(Modifier.fillMaxSize()) }
             led?.takeIf { it.lit && showLed }?.let { LedIndicator(it, Modifier.align(Alignment.TopCenter)) }
             if (!showLog) skinLayout?.keys?.forEach { (button, area) -> key(button, area) { SkinKeyZone(button, area) } }
             if (romNote.isNotBlank() && !vm.recoveryMode && !vm.lowPowerBoot && !showLog && !menu) {
@@ -1770,7 +1776,7 @@ open class VmActivity : ComponentActivity() {
                             Icon(Icons.Rounded.Minimize, contentDescription = stringResource(R.string.boot_minimize))
                         }
                     }
-                    LoadingIndicator(Modifier.size(64.dp))
+                    MoonPhaseSpinner(Modifier.size(64.dp)) // Moon Valley, 2026-11-16
                     Spacer(Modifier.height(16.dp))
                     Text(vm.img.name, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(vm.img.displayVersion, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

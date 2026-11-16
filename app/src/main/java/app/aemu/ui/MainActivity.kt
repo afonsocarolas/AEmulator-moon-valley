@@ -53,6 +53,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Museum
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.Delete
@@ -317,6 +318,9 @@ fun Library(model: LibraryModel) {
                 ),
                 actions = {
                     MoonPhaseButton(onFullMoon = { moonEgg = true })
+                    IconButton(onClick = { ctx.startActivity(Intent(ctx, MuseumActivity::class.java)) }) {
+                        Icon(Icons.Rounded.Museum, stringResource(R.string.museum_title))
+                    }
                     IconButton(onClick = { ctx.startActivity(Intent(ctx, RomCatalogActivity::class.java)) }) {
                         Icon(Icons.Rounded.List, stringResource(R.string.catalog_title))
                     }

@@ -188,6 +188,42 @@ fun MoonPhaseButton(onFullMoon: () -> Unit) {
     }
 }
 
+/**
+ * Added 2026-11-16: the Moon Valley boot screen, shown full screen while a firmware starts and before it draws
+ * anything. The moon rises slowly over the valley; stars twinkle. It doesn't take touches.
+ */
+@Composable
+fun MoonBootBackdrop(modifier: Modifier = Modifier) {
+    val rise = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { rise.animateTo(1f, tween(14000, easing = FastOutSlowInEasing)) }
+    val list = remember { stars(110, seed = 2008, maxY = 0.7f) }
+    val inf = rememberInfiniteTransition(label = "boot")
+    val t by inf.animateFloat(0f, 2f * PI.toFloat(), infiniteRepeatable(tween(5000, easing = LinearEasing)), label = "twinkle")
+    val glow by inf.animateFloat(0.9f, 1.08f, infiniteRepeatable(tween(3000), RepeatMode.Reverse), label = "glow")
+    Canvas(modifier.background(Brush.verticalGradient(listOf(Color(0xFF03040C), Color(0xFF0E1433), Color(0xFF1E2556))))) {
+        drawStars(list, MoonLight, t)
+        val r = size.minDimension * 0.11f
+        val c = Offset(size.width * 0.72f, size.height * (0.92f - 0.7f * rise.value))
+        drawCircle(Brush.radialGradient(listOf(MoonGold.copy(alpha = 0.28f), Color.Transparent), c, r * 3f * glow), r * 3f * glow, c)
+        drawMoon(c, r, 0.3f + 0.7f * rise.value, MoonLight, MoonLight.copy(alpha = 0.12f))
+        drawValley(Color(0xFF151B40), Color(0xFF0A0E24), height = size.height * 0.2f)
+    }
+}
+
+/** The loading indicator of the boot card: a moon running through its phases, new to full, again and again. */
+@Composable
+fun MoonPhaseSpinner(modifier: Modifier = Modifier) {
+    val p by rememberInfiniteTransition(label = "phases").animateFloat(
+        0f, 1f, infiniteRepeatable(tween(2400, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "phase",
+    )
+    val lit = MaterialTheme.colorScheme.primary
+    Canvas(modifier) {
+        val r = size.minDimension / 2f
+        drawCircle(lit.copy(alpha = 0.12f * p), r, center)
+        drawMoon(center, r * 0.72f, p, lit, lit.copy(alpha = 0.15f), craters = false)
+    }
+}
+
 /** The easter egg: a full moon rises over Moon Valley while shooting stars cross the sky. */
 @Composable
 fun MoonValleyEgg(onDismiss: () -> Unit) {

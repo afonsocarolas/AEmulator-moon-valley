@@ -19,6 +19,8 @@ AEmulator Moon Valley boots a real Android 1.0–17 system image straight from a
 - **Moon UI**: a midnight-indigo and moon-silver Material 3 palette (light and dark), and a home screen with a twinkling starry sky over a moonlit valley
 - **Moon in the top bar**: every tap waxes it from crescent towards full moon
 - **Easter egg**: 🤫 reach the full moon… (hint: seven is a lunar number — the version line in App settings › About knows it too)
+- **Moon Valley boot screen**: while a firmware starts, the moon rises over the valley and the loading spinner runs through the moon's phases
+- **Classic Android Museum**: a gallery of every Android version from 1.0 to 17, each exhibit in the colours of its era (🏛 button in the top bar)
 - **New icon** by Chris
 - Installs next to AEmulator Plus (package `app.aemu.moonvalley`)
 

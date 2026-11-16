@@ -11,4 +11,9 @@
         <item>Shh… the old Androids are sleeping under the stars.</item>
         <item>You found the secret valley. Tell no one. (Or tell everyone.)</item>
     </string-array>
+    <!-- Added 2026-11-16: the Classic Android Museum -->
+    <string name="museum_title">Classic Android Museum</string>
+    <string name="museum_subtitle">Every version, 2008 to today</string>
+    <string name="museum_intro">Welcome to the Moon Valley museum. Walk through every Android version, from the first phone with a slide-out keyboard to the newest release. Each exhibit wears the colours of its era.</string>
+    <string name="museum_footer">Android is a trademark of Google LLC. Codenames marked "internal" were used inside Google and not as public names.</string>
 </resources>
