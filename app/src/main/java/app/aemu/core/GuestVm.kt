@@ -3024,6 +3024,10 @@ class GuestVm(val ctx: Context, val img: GuestImage, val lowPowerBoot: Boolean =
                                 failure = Msg("system_server died at the end of the boot: its connect to a zygote socket failed with ENOENT (\"Failed to inform zygote of boot_completed\") although the socket files exist, so the boot finished but the system was killed; zygote exited with 137 as a result. Run with strace on to see which path the connect used")
                             if (code == 137 && guestLogHas("WiFi display was requested, but there is no WiFi Direct feature"))
                                 failure = Msg("system_server died in WifiDisplayAdapter: WiFi display is enabled by the firmware but android.hardware.wifi.direct is not declared (zygote exited with 137 as a result)")
+                            // Moon Valley, 2026-11-16: nothing above knew the cause; show what Android itself logged (watchdog kill or
+                            // fatal exception in system_server) instead of "cause not established"
+                            if (name == "zygote" && code == 137 && failure?.english?.contains("cause not established") == true)
+                                BootFailureReason.fromGuest(paths.root)?.let { failure = Msg(it) }
                             log("✖ $failure"); setState(State.FAILED)
                         } else if (plannedRestart) {
                             plannedRestart = false
