@@ -15,6 +15,10 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -184,6 +188,94 @@ fun MoonPhaseButton(onFullMoon: () -> Unit) {
             val r = size.minDimension / 2f
             if (taps == TAPS_TO_FULL_MOON) drawCircle(MoonGold.copy(alpha = 0.35f), r * 1.0f, center)
             drawMoon(center, r * 0.82f, phase, lit, lit.copy(alpha = 0.18f), craters = false)
+        }
+    }
+}
+
+private const val STARS_CAUGHT_KEY = "moon_stars_caught"
+
+private class Flight(val x: Float, val y: Float)
+private class Catch(val x: Float, val y: Float, val count: Int)
+
+/**
+ * Added 2026-11-16: now and then a shooting star crosses the home screen's sky. Tap it while it flies to catch it; the
+ * app keeps count. Only the little area around the star takes touches, and only while it flies, so nothing else on the
+ * screen is ever covered.
+ */
+@Composable
+fun ShootingStarLayer(modifier: Modifier = Modifier) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val haptic = LocalHapticFeedback.current
+    var flight by remember { androidx.compose.runtime.mutableStateOf<Flight?>(null) }
+    var progress by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    var caught by remember { androidx.compose.runtime.mutableStateOf<Catch?>(null) }
+    LaunchedEffect(Unit) {
+        delay(Random.nextLong(8_000, 15_000))                      // the first one comes soon, so it gets noticed
+        while (true) {
+            flight = Flight(0.55f + Random.nextFloat() * 0.4f, 0.10f + Random.nextFloat() * 0.2f)
+            progress = 0f
+            val t0 = androidx.compose.runtime.withFrameMillis { it }
+            while (flight != null && progress < 1f) {
+                progress = (androidx.compose.runtime.withFrameMillis { it } - t0) / 1900f
+            }
+            flight = null
+            delay(Random.nextLong(25_000, 60_000))
+        }
+    }
+    LaunchedEffect(caught) { if (caught != null) { delay(2600); caught = null } }
+
+    val cs = MaterialTheme.colorScheme
+    val night = cs.surface.luminance() < 0.5f
+    val starColor = if (night) MoonLight else cs.primary
+    // the star travels down and to the left, across half the screen
+    fun headX(f: Flight) = f.x - 0.5f * progress
+    fun headY(f: Flight) = f.y + 0.22f * progress
+
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxSize()) {
+        val w = maxWidth; val h = maxHeight
+        Canvas(Modifier.fillMaxSize()) {
+            flight?.let { f ->
+                val head = Offset(headX(f) * size.width, headY(f) * size.height)
+                val tail = head + Offset(0.16f * size.width, -0.07f * size.height)
+                val fade = if (progress > 0.8f) (1f - progress) / 0.2f else 1f
+                drawLine(Brush.linearGradient(listOf(starColor.copy(alpha = 0.9f * fade), Color.Transparent), head, tail),
+                    head, tail, strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
+                drawCircle(Brush.radialGradient(listOf(starColor.copy(alpha = fade), Color.Transparent), head, 9.dp.toPx()), 9.dp.toPx(), head)
+            }
+            caught?.let { c ->
+                // a little burst where it was caught
+                val p = Offset(c.x * size.width, c.y * size.height)
+                for (k in 0 until 8) {
+                    val a = k * PI.toFloat() / 4f
+                    drawLine(MoonGold, p + Offset(kotlin.math.cos(a), sin(a)) * 10.dp.toPx(),
+                        p + Offset(kotlin.math.cos(a), sin(a)) * 18.dp.toPx(), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+                }
+            }
+        }
+        flight?.let { f ->
+            Box(
+                Modifier.offset(x = w * headX(f) - 28.dp, y = h * headY(f) - 28.dp).size(56.dp)
+                    .pointerInput(Unit) {
+                        detectTapGestures {
+                        val now = flight ?: return@detectTapGestures
+                        val sp = app.aemu.AppPrefs.prefs(ctx)
+                        val n = sp.getInt(STARS_CAUGHT_KEY, 0) + 1
+                        sp.edit().putInt(STARS_CAUGHT_KEY, n).apply()
+                        caught = Catch(headX(now), headY(now), n)
+                        flight = null
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        }
+                    },
+            )
+        }
+        caught?.let { c ->
+            androidx.compose.material3.Surface(
+                shape = CircleShape, color = cs.surfaceContainerHigh.copy(alpha = 0.95f),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = h * (c.y + 0.06f)),
+            ) {
+                Text(stringResource(R.string.star_caught, c.count), style = MaterialTheme.typography.labelLarge,
+                    color = cs.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            }
         }
     }
 }

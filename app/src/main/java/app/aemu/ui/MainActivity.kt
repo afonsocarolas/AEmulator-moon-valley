@@ -490,6 +490,7 @@ fun Library(model: LibraryModel) {
             }
         }
     }
+    ShootingStarLayer() // Moon Valley, 2026-11-16: a shooting star to catch now and then
     } // Box (MoonSky)
 
     settingsFor?.let { img ->
