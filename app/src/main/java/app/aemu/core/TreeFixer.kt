@@ -1498,11 +1498,20 @@ class TreeFixer(
         }
         // ...and so does what declares that hardware to the framework: system_server takes "the feature is there but
         // its HAL is not" as fatal for the whole group of services it was starting (8.x: the window manager is in it)
+        // Moon Valley (2026-11-16): a firmware whose ActivityManagerService uses the fingerprint manager unchecked (HMD's Nokia
+        // G60 5G, Android 13: hasEnrolledFingerprints() in systemReady) dies without FingerprintService, so there the feature
+        // stays declared, even where the kernel would declare it unavailable (see UncheckedManagers)
+        val fingerprintNeeded = "fingerprint" in kernel.absentFeatures && UncheckedManagers.fingerprintNeeded(root)
+        if (fingerprintNeeded) log("fingerprint: ActivityManagerService uses the fingerprint manager unchecked, android.hardware.fingerprint stays declared")
+        File(root, "system/etc/permissions/aemu-fingerprint.xml").let { f ->
+            if (fingerprintNeeded) f.writeText("<permissions><feature name=\"android.hardware.fingerprint\" /></permissions>") else f.delete()
+        }
         for (dir in listOf("system/etc/permissions", "vendor/etc/permissions")) for (hw in listOf("consumerir", "fingerprint", "nfc", "nfc.hce", "nfc.hcef")) {
             val f = File(root, "$dir/android.hardware.$hw.xml")
             val dst = File(root, "system/.aemu-parked/${f.relativeTo(root).path.replace('/', '#')}")
             // which ones is the kernel's call: where the firmware's own HAL loads, the declaration has to be there
-            val absent = hw in kernel.absentFeatures || (hw == "consumerir" && kernel.irFollowsHal && !hasHal("consumerir"))
+            val absent = (hw in kernel.absentFeatures && !(hw == "fingerprint" && fingerprintNeeded)) ||
+                (hw == "consumerir" && kernel.irFollowsHal && !hasHal("consumerir"))
             if (!absent) { if (dst.isFile && !f.exists()) dst.renameTo(f); continue }
             if (!f.isFile) continue
             dst.parentFile?.mkdirs()
@@ -1558,7 +1567,7 @@ class TreeFixer(
             // starting FingerprintService and hwservicemanager answering "Cannot find entry vendor.oppo.hardware.biometrics.
             // fingerprint@2.1::IBiometricsFingerprint/default" again and again, with system_server's main thread in futex_wait).
             // Declared unavailable like the face feature, FingerprintService is not started at all.
-            val un = kernel.absentFeatures.filter { it.startsWith("bluetooth") || it == "fingerprint" } +
+            val un = kernel.absentFeatures.filter { it.startsWith("bluetooth") || (it == "fingerprint" && !fingerprintNeeded) } +
                 (if (cecHal) listOf("hdmi.cec") else emptyList()) + (if (thread) listOf("thread_network") else emptyList()) +
                 (if (faceDead) listOf("biometrics.face") else emptyList())
             if (un.isEmpty()) f.delete()

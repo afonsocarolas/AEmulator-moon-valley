@@ -113,7 +113,20 @@ object DexTools {
      * Whether the code item at [code] loads one of the strings [strings] (const-string / const-string/jumbo). The
      * instructions are walked one by one (switch and array payloads skipped), so an operand is never read as an opcode.
      */
-    internal fun codeLoadsString(d: ByteArray, code: Int, strings: Set<Int>): Boolean {
+    internal fun codeLoadsString(d: ByteArray, code: Int, strings: Set<Int>): Boolean = walk(d, code) { op, at ->
+        (op == 0x1a && u2(d, at + 2) in strings) || (op == 0x1b && u4(d, at + 2) in strings)
+    }
+
+    /** Whether the code item at [code] invokes one of the methods [methods] (any invoke-kind, plain or /range). */
+    internal fun codeInvokes(d: ByteArray, code: Int, methods: Set<Int>): Boolean = walk(d, code) { op, at ->
+        (op in 0x6e..0x72 || op in 0x74..0x78) && u2(d, at + 2) in methods
+    }
+
+    /**
+     * Walks the instructions of the code item at [code] one by one (switch and array payloads skipped, so an operand is
+     * never read as an opcode) until [hit] answers true for one (op, byte offset). False at the end or on a bad item.
+     */
+    private inline fun walk(d: ByteArray, code: Int, hit: (Int, Int) -> Boolean): Boolean {
         val n = u4(d, code + 12)
         val start = code + 16
         if (n <= 0 || start + 2L * n > d.size) return false
@@ -129,11 +142,40 @@ object DexTools {
                 else -> insnLength(op)
             }
             if (pc + len > n) return false
-            if (op == 0x1a && u2(d, at + 2) in strings) return true
-            if (op == 0x1b && u4(d, at + 2) in strings) return true
+            if (hit(op, at)) return true
             pc += len
         }
         return false
+    }
+
+    /** Indexes of the method ids named [name] whose class is [cls] (one per prototype the dex refers to). */
+    internal fun methodIds(x: Dex, cls: String, name: String): Set<Int> {
+        val out = HashSet<Int>()
+        for (m in 0 until x.methodIds) if (x.methodName(m) == name && x.methodClass(m) == cls) out += m
+        return out
+    }
+
+    /** code_item offsets of every method with code in the classes whose descriptor is [cls] or starts with it plus "$". */
+    internal fun classCodes(x: Dex, cls: String): List<Int> {
+        val d = x.d
+        val nested = cls.removeSuffix(";") + "$"
+        val out = ArrayList<Int>()
+        for (c in 0 until x.classDefs) {
+            val def = x.classDefsOff + 32 * c
+            val name = x.type(u4(d, def))
+            if (name != cls && !name.startsWith(nested)) continue
+            var o = u4(d, def + 24)
+            if (o == 0) continue
+            val sizes = IntArray(4)
+            for (i in 0 until 4) { val (v, n) = uleb(d, o); sizes[i] = v; o += n }
+            for (i in 0 until sizes[0] + sizes[1]) { o += uleb(d, o).second; o += uleb(d, o).second }
+            for (i in 0 until sizes[2] + sizes[3]) {
+                o += uleb(d, o).second; o += uleb(d, o).second
+                val (code, n3) = uleb(d, o); o += n3
+                if (code != 0) out += code
+            }
+        }
+        return out
     }
 
     /** Indexes of the strings that start with [prefix]. */
