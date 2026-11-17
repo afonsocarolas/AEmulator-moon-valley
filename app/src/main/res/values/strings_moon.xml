@@ -18,4 +18,10 @@
     <string name="museum_footer">Android is a trademark of Google LLC. Codenames marked "internal" were used inside Google and not as public names.</string>
     <!-- Added 2026-11-16: catching a shooting star on the home screen -->
     <string name="star_caught">Shooting star caught! ✨ %1$d so far</string>
+    <!-- Added 2026-11-17: the 3D phone showcase of a running machine -->
+    <string name="phone3d_menu">3D view</string>
+    <string name="phone3d_done">Done</string>
+    <string name="phone3d_spin">Spin</string>
+    <string name="phone3d_hint">Drag to turn · double-tap to face front</string>
+    <string name="phone3d_back_title" translatable="false">AEmulator Moon Valley</string>
 </resources>

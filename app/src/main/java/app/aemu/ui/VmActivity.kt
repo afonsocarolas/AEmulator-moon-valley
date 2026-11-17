@@ -52,6 +52,7 @@ import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.material.icons.rounded.Screenshot
+import androidx.compose.material.icons.rounded.ViewInAr
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Sms
@@ -812,6 +813,8 @@ open class VmActivity : ComponentActivity() {
     private var menuSize by mutableStateOf(androidx.compose.ui.unit.IntSize.Zero)
     private var menuOpen by mutableStateOf(false)
     private var showLog by mutableStateOf(false)
+    /** Moon Valley, 2026-11-17: the 3D phone showcase is open */
+    private var phone3d by mutableStateOf(false)
     /** [o] pulled back inside the screen border; also fixes a saved position that no longer fits (rotation, other screen size) */
     private fun clampMenuOffset(o: Offset): Offset {
         val (x, y) = VmUiPolicy.clampMenuOffset(o.x, o.y, menuArea.width, menuArea.height, menuSize.width, menuSize.height)
@@ -1397,6 +1400,13 @@ open class VmActivity : ComponentActivity() {
                 enter = fadeIn(), exit = fadeOut(),
                 modifier = Modifier.align(Alignment.Center),
             ) { BootCard(seconds, onMinimize = { cardOverride = true }) }
+            // Moon Valley, 2026-11-17: the running machine on a phone that turns in 3D (its own window, the machine runs on)
+            if (phone3d) Phone3DDialog(
+                guestW = guest.w, guestH = guest.h, grab = { px -> grabFrame(px) },
+                skin = if (vmTheme.isSkin) (frameView?.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap else null,
+                skinScreen = vmTheme.skinScreen.takeIf { vmTheme.isSkin },
+                name = vm.img.name, onDismiss = { phone3d = false },
+            )
 
             // minimized: a small pill, tap it to bring the card back
             val pillState = state == GuestVm.State.BOOTING || state == GuestVm.State.PREPARING
@@ -1500,6 +1510,9 @@ open class VmActivity : ComponentActivity() {
                     }
                     DropdownMenuItem(text = { Text(stringResource(R.string.m_screenshot)) }, leadingIcon = { Icon(Icons.Rounded.Screenshot, null) },
                         enabled = running, onClick = { menu = false; screenshot() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.phone3d_menu)) },
+                        leadingIcon = { Icon(Icons.Rounded.ViewInAr, null) },
+                        enabled = running, onClick = { menu = false; phone3d = true })
                     DropdownMenuItem(text = { Text(stringResource(if (vncOn) R.string.m_vnc_stop else R.string.m_vnc)) },
                         leadingIcon = { Icon(Icons.Rounded.Cast, null) },
                         enabled = running || vncOn, onClick = { menu = false; toggleVnc() })
