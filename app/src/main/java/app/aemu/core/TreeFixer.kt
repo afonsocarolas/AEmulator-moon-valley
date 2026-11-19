@@ -4583,6 +4583,14 @@ class TreeFixer(
         val dst = File(root, "system/lib/hw/hwcomposer.default.so")
         // ours, from this or an earlier build: the module carries its own name string
         val ours = HwcFallback.isStandIn(dst)
+        // Moon Valley (2026-11-19): a YotaPhone with Yota's e-ink library gets its back screen as display 2 of the stand-in
+        // (native/hwc1fb: the file below is its mark). Its SurfaceFlinger crashed with the stand-in that had no display 2,
+        // so an older verdict of HwcFallback does not count for it: the current stand-in gets one try.
+        val epd = File(root, "system/lib/libepd.so").isFile &&
+            listOf(img.brand, img.model, img.name).any { it.contains("yota", ignoreCase = true) }
+        File(root, "system/etc/aemu-epd").let { f -> if (epd) { if (!f.isFile) f.writeText("") } else f.delete() }
+        if (epd && HwcFallback.disabled(paths) && !HwcFallback.disabled(paths, retryOlder = true) && HwcFallback.clear(paths))
+            log("hwcomposer: the stand-in composer has the YotaPhone back screen now (display 2); trying it again on this image")
         // a SurfaceFlinger of this image crashed with the stand-in before (HwcFallback): it stays out, the image runs on the fb HAL
         if (HwcFallback.disabled(paths)) {
             if (HwcFallback.remove(root)) log("hwcomposer: stand-in composer removed (surfaceflinger crashed with it on this image; file \"hwc-standin-off\" in the image directory)")
@@ -4599,7 +4607,7 @@ class TreeFixer(
         dst.parentFile?.mkdirs()
         dst.delete()
         installAsset(HWC_FB, dst)
-        log("hwcomposer: stand-in composer installed (HWC 1.1, GLES composition, vsync at fb0's refresh rate)")
+        log("hwcomposer: stand-in composer installed (HWC 1.1, GLES composition, vsync at fb0's refresh rate" + (if (epd) ", YotaPhone back screen as display 2)" else ")"))
     }.onFailure { log("hwcomposer: stand-in composer failed: ${it.message}") }
 
     /**

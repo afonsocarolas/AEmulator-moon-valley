@@ -10,17 +10,35 @@ import java.io.File
  * running on the framebuffer HAL alone (the same way QemuFallback remembers the translator choice).
  *
  * To try the stand-in again on an image: delete the file "hwc-standin-off" from its directory.
+ *
+ * Modified for AEmulator Moon Valley, 2026-11-19: the marker holds the revision of the stand-in it was written for
+ * ([REVISION]; markers of older builds hold "1"). A caller may ask for one more try when the stand-in has changed since
+ * ([disabled] with retryOlder): YotaPhone 2 firmware crashed with the stand-in that had no back screen (display 2), the
+ * one that has it gets one chance; if surfaceflinger crashes again the new marker keeps it out for good.
  */
 object HwcFallback {
     private const val MARKER = "hwc-standin-off"
     private const val NAME_STRING = "AEmulator framebuffer hwcomposer"
+    /** the stand-in composer revision a marker refers to (2: the YotaPhone back screen as display 2) */
+    const val REVISION = "2"
 
     private fun marker(paths: VmPaths) = File(paths.dir, MARKER)
 
-    /** a surfaceflinger crashed with the stand-in in place: it stays out of this image */
-    fun disabled(paths: VmPaths): Boolean = marker(paths).exists()
+    /**
+     * a surfaceflinger crashed with the stand-in in place: it stays out of this image. With [retryOlder], a marker
+     * written for an older stand-in does not count (the caller gives the current one a try).
+     */
+    fun disabled(paths: VmPaths, retryOlder: Boolean = false): Boolean {
+        val m = marker(paths)
+        if (!m.exists()) return false
+        if (!retryOlder) return true
+        return runCatching { m.readText().trim() }.getOrDefault("1") == REVISION
+    }
 
-    fun disable(paths: VmPaths): Boolean = runCatching { marker(paths).writeText("1"); true }.getOrDefault(false)
+    /** forgets an older verdict, so the current stand-in is installed again */
+    fun clear(paths: VmPaths): Boolean = marker(paths).delete()
+
+    fun disable(paths: VmPaths): Boolean = runCatching { marker(paths).writeText(REVISION); true }.getOrDefault(false)
 
     /** the stand-in composer of this engine (it carries its own name string), from this or an earlier build */
     fun isStandIn(f: File): Boolean = f.isFile && runCatching {

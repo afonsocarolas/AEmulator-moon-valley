@@ -53,6 +53,7 @@ import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.material.icons.rounded.Screenshot
 import androidx.compose.material.icons.rounded.ViewInAr
+import androidx.compose.material.icons.rounded.FlipToBack
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Sms
@@ -815,6 +816,22 @@ open class VmActivity : ComponentActivity() {
     private var showLog by mutableStateOf(false)
     /** Moon Valley, 2026-11-17: the 3D phone showcase is open */
     private var phone3d by mutableStateOf(false)
+    /** Moon Valley, 2026-11-19: the YotaPhone back screen is open */
+    private var backScreen by mutableStateOf(false)
+    /** the engine marked this machine as a YotaPhone with its back screen (see TreeFixer.framebufferComposer) */
+    private val hasBackScreen by lazy { File(vm.paths.root, "system/etc/aemu-epd").isFile }
+
+    /** One look at the YotaPhone back screen: "screencap -d 2" in the guest, raw (a PNG would take seconds to encode there). */
+    private fun captureBackScreen(): BackScreenShot {
+        val rel = "data/local/tmp/aemu-epd.raw"
+        val out = File(vm.paths.root, rel)
+        out.delete()
+        val said = runCatching { vm.guestShell("screencap -d 2 /$rel", 20_000) }.getOrElse { it.toString() }
+        val bytes = runCatching { out.readBytes() }.getOrNull()
+            ?: return BackScreenShot(null, said.lines().map { it.trim() }.lastOrNull { it.isNotEmpty() && !it.startsWith("WARNING: linker") } ?: "screencap -d 2 gave no file")
+        val fr = app.aemu.core.ScreencapRaw.decode(bytes) ?: return BackScreenShot(null, "screencap -d 2: ${bytes.size} bytes in a form not known")
+        return BackScreenShot(android.graphics.Bitmap.createBitmap(fr.argb, fr.width, fr.height, android.graphics.Bitmap.Config.ARGB_8888))
+    }
     /** [o] pulled back inside the screen border; also fixes a saved position that no longer fits (rotation, other screen size) */
     private fun clampMenuOffset(o: Offset): Offset {
         val (x, y) = VmUiPolicy.clampMenuOffset(o.x, o.y, menuArea.width, menuArea.height, menuSize.width, menuSize.height)
@@ -1400,6 +1417,7 @@ open class VmActivity : ComponentActivity() {
                 enter = fadeIn(), exit = fadeOut(),
                 modifier = Modifier.align(Alignment.Center),
             ) { BootCard(seconds, onMinimize = { cardOverride = true }) }
+            if (backScreen) BackScreenDialog(capture = { captureBackScreen() }, onDismiss = { backScreen = false })
             // Moon Valley, 2026-11-17: the running machine on a phone that turns in 3D (its own window, the machine runs on)
             if (phone3d) Phone3DDialog(
                 guestW = guest.w, guestH = guest.h, grab = { px -> grabFrame(px) },
@@ -1510,6 +1528,9 @@ open class VmActivity : ComponentActivity() {
                     }
                     DropdownMenuItem(text = { Text(stringResource(R.string.m_screenshot)) }, leadingIcon = { Icon(Icons.Rounded.Screenshot, null) },
                         enabled = running, onClick = { menu = false; screenshot() })
+                    if (hasBackScreen) DropdownMenuItem(text = { Text(stringResource(R.string.back_menu)) },
+                        leadingIcon = { Icon(Icons.Rounded.FlipToBack, null) },
+                        enabled = running, onClick = { menu = false; backScreen = true })
                     DropdownMenuItem(text = { Text(stringResource(R.string.phone3d_menu)) },
                         leadingIcon = { Icon(Icons.Rounded.ViewInAr, null) },
                         enabled = running, onClick = { menu = false; phone3d = true })

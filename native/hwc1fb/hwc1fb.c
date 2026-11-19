@@ -17,6 +17,13 @@
  * through the framebuffer window and the fb HAL exactly as before; set() has only the fences to close.
  * This replaces ElfPatch.hwcEventControlWithoutAllocation, a byte patch of libsurfaceflinger.
  *
+ * Modified for AEmulator Moon Valley, 2026-11-19: the YotaPhone 2 back screen. Yota's SurfaceFlinger (4.4.3) has a third
+ * built-in display, type 2 "EPD Screen", and its HWComposer asks the composer about displays 0, 1 and 2 when it starts:
+ * the one that answers getDisplayConfigs is taken as connected. When the engine leaves the file /system/etc/aemu-epd in
+ * the tree (YotaPhone firmware only), display 2 answers as a 540x960 e-ink panel (about 235 dpi), so Yota's Android makes
+ * its back screen and draws on it; the engine reads that display back with "screencap -d 2". Without the file nothing
+ * changes: one built-in display, as before.
+ *
  * Built by build-zig.sh against the 4.3 contract (hardware/hwcomposer.h, hwcomposer_defs.h). Needs libc only. No 64-bit
  * division and no libgcc helpers: the guest's bionic has none to give.
  */
@@ -36,6 +43,10 @@ extern int nanosleep(const struct timespec32 *req, struct timespec32 *rem);   /*
 #define O_RDONLY 0
 #define FBIOGET_VSCREENINFO 0x4600
 #define EINVAL_ 22
+#define EPD_DISP 2                                    /* Yota's DisplayDevice::DISPLAY_EPD / HWC display index of the back screen */
+#define EPD_W 540
+#define EPD_H 960
+#define EPD_DPI1000 235000
 
 #define HARDWARE_MODULE_TAG 0x48574d54u               /* 'H','W','M','T' */
 #define HARDWARE_DEVICE_TAG 0x48574454u               /* 'H','W','D','T' */
@@ -123,7 +134,10 @@ static struct {
     uint32_t period_ns, xdpi1000, ydpi1000;
     const struct procs *procs;
     volatile int vsync_on, thread_started;
+    int epd;                                           /* the YotaPhone back screen is display 2 */
 } g;
+
+static int disp_ok(int disp) { return disp == 0 || (g.epd && disp == EPD_DISP); }
 
 /* the guest's bionic has no __aeabi_uidiv to give: a plain shift-and-subtract divide, for the few non-constant ones */
 static uint32_t udiv(uint32_t n, uint32_t d) {
@@ -219,7 +233,8 @@ static int hwc_set(struct hwc *d, size_t n, struct contents **c) {
 static int hwc_event_control(struct hwc *d, int disp, int event, int enabled) {
     (void)d;
     if (event != HWC_EVENT_VSYNC || (enabled != 0 && enabled != 1)) return -EINVAL_;
-    if (disp != 0) return -EINVAL_;
+    if (!disp_ok(disp)) return -EINVAL_;
+    if (disp != 0) return 0;                           /* the back screen has no vsync of its own; display 0's ticks drive everything */
     g.vsync_on = enabled;
     return 0;
 }
@@ -231,7 +246,7 @@ static int hwc_query(struct hwc *d, int what, int *value) {
     switch (what) {
     case HWC_BACKGROUND_LAYER_SUPPORTED: *value = 0; return 0;
     case HWC_VSYNC_PERIOD: *value = (int)g.period_ns; return 0;
-    case HWC_DISPLAY_TYPES_SUPPORTED: *value = 1; return 0;        /* HWC_DISPLAY_PRIMARY_BIT */
+    case HWC_DISPLAY_TYPES_SUPPORTED: *value = g.epd ? (1 | (1 << EPD_DISP)) : 1; return 0;   /* PRIMARY_BIT (+ the EPD's) */
     }
     return -EINVAL_;
 }
@@ -240,7 +255,9 @@ static void hwc_register_procs(struct hwc *d, const struct procs *p) { (void)d; 
 
 static void hwc_dump(struct hwc *d, char *buf, int len) {
     (void)d;
-    static const char s[] = "aemu hwc1fb: HWC 1.1, GLES composition only, software vsync thread\n";
+    static const char s0[] = "aemu hwc1fb: HWC 1.1, GLES composition only, software vsync thread\n";
+    static const char s1[] = "aemu hwc1fb: HWC 1.1, GLES composition only, software vsync thread, EPD back screen as display 2\n";
+    const char *s = g.epd ? s1 : s0;
     int i = 0;
     for (; i < len - 1 && s[i]; i++) buf[i] = s[i];
     if (len > 0) buf[i] = 0;
@@ -248,21 +265,22 @@ static void hwc_dump(struct hwc *d, char *buf, int len) {
 
 static int hwc_get_configs(struct hwc *d, int disp, uint32_t *configs, size_t *n) {
     (void)d;
-    if (disp != 0) return -EINVAL_;                    /* no external display */
+    if (!disp_ok(disp)) return -EINVAL_;               /* no external display (and no back screen unless asked for) */
     if (n && *n >= 1 && configs) { configs[0] = 0; *n = 1; }
     return 0;
 }
 
 static int hwc_get_attributes(struct hwc *d, int disp, uint32_t config, const uint32_t *attrs, int32_t *values) {
     (void)d; (void)config;
-    if (disp != 0) return -EINVAL_;
+    if (!disp_ok(disp)) return -EINVAL_;
+    int epd = disp == EPD_DISP;
     for (int i = 0; attrs[i] != HWC_DISPLAY_NO_ATTRIBUTE; i++) {
         switch (attrs[i]) {
         case HWC_DISPLAY_VSYNC_PERIOD: values[i] = (int32_t)g.period_ns; break;
-        case HWC_DISPLAY_WIDTH: values[i] = g.w; break;
-        case HWC_DISPLAY_HEIGHT: values[i] = g.h; break;
-        case HWC_DISPLAY_DPI_X: values[i] = (int32_t)g.xdpi1000; break;
-        case HWC_DISPLAY_DPI_Y: values[i] = (int32_t)g.ydpi1000; break;
+        case HWC_DISPLAY_WIDTH: values[i] = epd ? EPD_W : g.w; break;
+        case HWC_DISPLAY_HEIGHT: values[i] = epd ? EPD_H : g.h; break;
+        case HWC_DISPLAY_DPI_X: values[i] = epd ? EPD_DPI1000 : (int32_t)g.xdpi1000; break;
+        case HWC_DISPLAY_DPI_Y: values[i] = epd ? EPD_DPI1000 : (int32_t)g.ydpi1000; break;
         default: values[i] = -1; break;
         }
     }
@@ -282,6 +300,8 @@ static int hwc_open(const struct hw_module *m, const char *id, struct hw_device 
     const char want[] = "composer";
     for (int i = 0; i < 9; i++) if (id[i] != want[i]) return -EINVAL_;
     read_fb();
+    int fd = open("/system/etc/aemu-epd", O_RDONLY);  /* the engine's mark: a YotaPhone with its back screen */
+    if (fd >= 0) { g.epd = 1; close(fd); }
     the_device.common.tag = HARDWARE_DEVICE_TAG;
     the_device.common.version = HWC_DEVICE_API_VERSION_1_1;
     the_device.common.module = &HMI;

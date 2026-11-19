@@ -24,4 +24,9 @@
     <string name="phone3d_spin">Spin</string>
     <string name="phone3d_hint">Drag to turn · double-tap to face front</string>
     <string name="phone3d_back_title" translatable="false">AEmulator Moon Valley</string>
+    <!-- Added 2026-11-19: the YotaPhone back screen (e-ink, the guest's display 2) -->
+    <string name="back_menu">Back screen</string>
+    <string name="back_title">YotaPhone back screen</string>
+    <string name="back_none">No picture from the back screen yet.\n%1$s</string>
+    <string name="back_hint">The e-ink back screen, as the firmware draws it. It refreshes every 2 seconds; touch on it is not supported yet.</string>
 </resources>
