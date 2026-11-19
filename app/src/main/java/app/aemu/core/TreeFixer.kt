@@ -4549,6 +4549,8 @@ class TreeFixer(
             val keep = File(root, "system/.aemu-parked/system#lib#libsurfaceflinger.so")
             backupOnce(lib, keep)
             if (ElfPatch.skipNullDeviceHook(lib) > 0) log("libsurfaceflinger: the missing HAL device hook is skipped")
+            // Moon Valley (2026-11-19): YotaPhone 2: closing the e-ink framebuffer device that does not exist here (see ElfPatch)
+            if (yotaEpd() && ElfPatch.nullSafeDeviceClose(lib) > 0) log("libsurfaceflinger: closing a framebuffer device that was never opened (the e-ink one) is skipped")
             // The vsync of 4.2+ without a composer is not patched into SurfaceFlinger any more: it gets a composer (below).
             // A tree that carries the old byte patch is put back the way the firmware had it.
             if (ElfPatch.revertHwcEventControlPatch(lib, keep) > 0) log("libsurfaceflinger: old vsync byte patch removed (the stand-in hwcomposer is used instead)")
@@ -4577,6 +4579,10 @@ class TreeFixer(
      * unpatched. Only for a firmware that has no composer module left; one that has is not touched. It goes into every such
  * image first; if surfaceflinger crashes with it, GuestVm takes it out again and restarts (see [HwcFallback]).
      */
+    /** a YotaPhone with Yota's e-ink library: its back screen is display 2 of the stand-in composer (Moon Valley, 2026-11-19) */
+    private fun yotaEpd(): Boolean = File(root, "system/lib/libepd.so").isFile &&
+        listOf(img.brand, img.model, img.name).any { it.contains("yota", ignoreCase = true) }
+
     private fun framebufferComposer() = runCatching {
         if (engine != Engine.KK || img.arch != GuestArch.ARM || img.api !in 17..19) return@runCatching
         if (!File(root, "system/lib/libsurfaceflinger.so").isFile) return@runCatching
@@ -4586,8 +4592,7 @@ class TreeFixer(
         // Moon Valley (2026-11-19): a YotaPhone with Yota's e-ink library gets its back screen as display 2 of the stand-in
         // (native/hwc1fb: the file below is its mark). Its SurfaceFlinger crashed with the stand-in that had no display 2,
         // so an older verdict of HwcFallback does not count for it: the current stand-in gets one try.
-        val epd = File(root, "system/lib/libepd.so").isFile &&
-            listOf(img.brand, img.model, img.name).any { it.contains("yota", ignoreCase = true) }
+        val epd = yotaEpd()
         File(root, "system/etc/aemu-epd").let { f -> if (epd) { if (!f.isFile) f.writeText("") } else f.delete() }
         if (epd && HwcFallback.disabled(paths) && !HwcFallback.disabled(paths, retryOlder = true) && HwcFallback.clear(paths))
             log("hwcomposer: the stand-in composer has the YotaPhone back screen now (display 2); trying it again on this image")

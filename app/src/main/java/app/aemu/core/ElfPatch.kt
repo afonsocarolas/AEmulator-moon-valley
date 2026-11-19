@@ -947,6 +947,42 @@ object ElfPatch {
         return 1
     }
 
+    /**
+     * Added for AEmulator Moon Valley, 2026-11-19. YotaPhone 2 (4.4.3) libsurfaceflinger: HWComposer opens two framebuffer
+     * devices, fb0 and the e-ink panel's, and with a composer of HWC 1.1 or later closes both again. In the emulator there
+     * is no e-ink framebuffer, the second device is null, and the inline "dev->common.close(dev)" helper reads close()
+     * from address 0x3c: SIGSEGV at +0x1e1fc in surfaceflinger, so the stand-in composer could never be used there. The
+     * helper (push {r3,lr} ; ldr r3,[r0,#0x3c] ; blx r3 ; pop {r3,pc}) becomes null-safe in the same eight bytes:
+     * cbz r0, ret ; ldr r3,[r0,#0x3c] ; bx r3 (a tail call, close() returns to the caller) ; ret: bx lr.
+     */
+    private val SF_CLOSE_HELPER = byteArrayOf(0x08, 0xb5.toByte(), 0xc3.toByte(), 0x6b, 0x98.toByte(), 0x47, 0x08, 0xbd.toByte())
+    private val SF_CLOSE_HELPER_NULLSAFE = byteArrayOf(0x08, 0xb1.toByte(), 0xc3.toByte(), 0x6b, 0x18, 0x47, 0x70, 0x47)
+
+    /** File offsets of the close helper [nullSafeDeviceClose] rewrites (2-byte aligned, in an ELF file); only a single match counts. */
+    fun nullSafeDeviceCloseOffsets(d: ByteArray): List<Int> {
+        if (d.size < 52 || d[0] != 0x7f.toByte() || d[1] != 'E'.code.toByte() || d[4] != 1.toByte()) return emptyList()
+        val hits = ArrayList<Int>()
+        var i = 0
+        while (i <= d.size - SF_CLOSE_HELPER.size) {
+            var ok = true
+            for (k in SF_CLOSE_HELPER.indices) if (d[i + k] != SF_CLOSE_HELPER[k]) { ok = false; break }
+            if (ok) hits.add(i)
+            i += 2
+        }
+        return if (hits.size == 1) hits else emptyList()
+    }
+
+    /** libsurfaceflinger: closing a device that was never opened does nothing. 1 when patched, 0 otherwise. */
+    fun nullSafeDeviceClose(f: File): Int {
+        val d = runCatching { f.readBytes() }.getOrNull() ?: return 0
+        val at = nullSafeDeviceCloseOffsets(d).firstOrNull() ?: return 0
+        RandomAccessFile(f, "rw").use { raf -> raf.seek(at.toLong()); raf.write(SF_CLOSE_HELPER_NULLSAFE) }
+        return 1
+    }
+
+    /** the patched helper (for the tests) */
+    internal fun nullSafeDeviceCloseBytes(): ByteArray = SF_CLOSE_HELPER_NULLSAFE.copyOf()
+
     private val THUMB_NOP2 = byteArrayOf(0x00, 0xbf.toByte(), 0x00, 0xbf.toByte()) // nop ; nop
 
     /**

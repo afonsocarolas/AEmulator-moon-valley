@@ -19,8 +19,9 @@ import java.io.File
 object HwcFallback {
     private const val MARKER = "hwc-standin-off"
     private const val NAME_STRING = "AEmulator framebuffer hwcomposer"
-    /** the stand-in composer revision a marker refers to (2: the YotaPhone back screen as display 2) */
-    const val REVISION = "2"
+    /** the stand-in composer revision a marker refers to (2: the YotaPhone back screen as display 2; 3: with Yota's
+     *  SurfaceFlinger no longer closing the e-ink framebuffer device that is not there) */
+    const val REVISION = "3"
 
     private fun marker(paths: VmPaths) = File(paths.dir, MARKER)
 
