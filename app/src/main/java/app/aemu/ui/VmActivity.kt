@@ -60,6 +60,7 @@ import androidx.compose.material.icons.rounded.Sms
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Lan
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Gamepad
 import androidx.compose.material.icons.rounded.Code
@@ -218,6 +219,13 @@ open class VmActivity : ComponentActivity() {
     // screen recording of the running guest (menu: Record screen / Stop recording)
     private var recorder: app.aemu.core.ScreenRecorder? = null
     private var recOn by mutableStateOf(false)
+    // Moon Valley, 2026-11-19: play in a browser (menu: Play in a browser; see core/WebPlayServer)
+    private var webPlay: app.aemu.core.WebPlayServer? = null
+    private var webPlayUrl by mutableStateOf<String?>(null)
+    private var webPlayShown by mutableStateOf(false)
+    private var webPlayBitmap: android.graphics.Bitmap? = null
+    /** VNC, recording, the 3D view and browser play may all take frames at once; they share the scratch bitmaps */
+    private val grabLock = Any()
     private var grabScratch: android.graphics.Bitmap? = null
     private var grabOut: android.graphics.Bitmap? = null
     private val grabThread by lazy { android.os.HandlerThread("frame-grab").apply { start() } }
@@ -698,6 +706,7 @@ open class VmActivity : ComponentActivity() {
         vmRoot = null
         heldNavKeys.releaseAll()
         vnc?.stop(); vnc = null; vncOn = false
+        webPlay?.stop(); webPlay = null
         recorder?.let { r -> recorder = null; recOn = false; thread { r.stop() } }
         if (::guest.isInitialized) guest.stop()
         shellRx?.let { runCatching { unregisterReceiver(it) } }
@@ -991,7 +1000,9 @@ open class VmActivity : ComponentActivity() {
      * The current frame at the guest's resolution as ARGB pixels: the fb0 file, or (in-app GPU bridge, where fb0 stays
      * empty) the SurfaceView through PixelCopy. Waits for the copy, so never call it on the main thread.
      */
-    private fun grabFrame(px: IntArray): Boolean {
+    private fun grabFrame(px: IntArray): Boolean = synchronized(grabLock) { grabFrameNow(px) }
+
+    private fun grabFrameNow(px: IntArray): Boolean {
         val g = guest
         if (g.w <= 0 || g.h <= 0) return false
         if (!g.passthrough) {
@@ -1041,6 +1052,81 @@ open class VmActivity : ComponentActivity() {
         vm.log("vnc: $where")
         runOnUiThread { Toast.makeText(this, where, Toast.LENGTH_LONG).show() }
     }
+
+    /**
+     * Moon Valley, 2026-11-19: play in a browser. Starts the server (a new key each time) and shows its address; when
+     * it already runs, shows the address again. The page: src/main/webAssets/webplay; the server: core/WebPlayServer.
+     */
+    private fun openWebPlay() {
+        if (webPlay != null) { webPlayShown = true; return }
+        if (guest.w <= 0 || guest.h <= 0) { toast(getString(R.string.m_failed)); return }
+        val ip = lanAddress() ?: run { runOnUiThread { Toast.makeText(this, R.string.webplay_no_network, Toast.LENGTH_LONG).show() }; return }
+        val page = runCatching { assets.open("webplay/index.html").use { String(it.readBytes(), Charsets.UTF_8) } }
+            .getOrElse { toast(getString(R.string.m_failed)); return }
+        val key = app.aemu.core.WebPlayServer.newKey()
+        val controls = object : app.aemu.core.WebPlayServer.Controls {
+            override fun touch(points: List<InputService.P>) {
+                val w = guest.w; val h = guest.h
+                vm.input.touch(points.map { InputService.P(it.id, it.x.coerceIn(0, maxOf(0, w - 1)), it.y.coerceIn(0, maxOf(0, h - 1))) })
+            }
+            override fun key(code: Int, down: Boolean) {
+                vm.input.key(if (code == InputService.KEY_HOME) vm.input.homeCode else code, down)
+            }
+            override fun nav(button: String) {
+                when (button) {
+                    "back" -> vm.input.press(InputService.KEY_BACK)
+                    "home" -> vm.input.press(vm.input.homeCode)
+                    "recents" -> vm.input.recents(vm.img.api, vm.img.skin)
+                    "menu" -> vm.input.press(InputService.KEY_MENU)
+                    "power" -> vm.input.press(InputService.KEY_POWER)
+                    "volup" -> vm.input.press(InputService.KEY_VOLUMEUP)
+                    "voldown" -> vm.input.press(InputService.KEY_VOLUMEDOWN)
+                }
+            }
+            override fun scroll(x: Int, y: Int, dy: Int) {
+                val h = guest.h
+                if (h <= 0 || dy == 0) return
+                // content scrolls down when the finger moves up; keep the swipe on the screen
+                val reach = dy.coerceIn(-h * 2 / 3, h * 2 / 3)
+                val y0 = y.coerceIn(h / 6, h * 5 / 6)
+                val y1 = (y0 - reach).coerceIn(1, h - 2)
+                thread(name = "webplay-scroll") { vm.input.swipe(x, y0, x, y1, 220) }
+            }
+        }
+        val frames = app.aemu.core.WebPlayServer.Frames {
+            val w = guest.w; val h = guest.h
+            if (w <= 0 || h <= 0) return@Frames null
+            val px = IntArray(w * h)
+            if (!grabFrame(px)) return@Frames null
+            val bmp = webPlayBitmap?.takeIf { it.width == w && it.height == h }
+                ?: android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888).also { webPlayBitmap = it }
+            bmp.setPixels(px, 0, w, 0, 0, w, h)
+            java.io.ByteArrayOutputStream(w * h / 4).also { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 72, it) }.toByteArray()
+        }
+        var server: app.aemu.core.WebPlayServer? = null
+        for (p in app.aemu.core.WebPlayServer.DEFAULT_PORT until app.aemu.core.WebPlayServer.DEFAULT_PORT + 10) {
+            val candidate = app.aemu.core.WebPlayServer(p, key, page, frames, controls, vm::log)
+            if (candidate.start()) { server = candidate; break }
+        }
+        if (server == null) { toast(getString(R.string.m_failed)); return }
+        webPlay = server
+        webPlayUrl = "http://$ip:${server.boundPort}/?k=$key"
+        vm.log("webplay: open http://$ip:${server.boundPort}/ (key shown in the app)")
+        webPlayShown = true
+    }
+
+    private fun stopWebPlay() {
+        webPlay?.stop()
+        webPlay = null; webPlayUrl = null; webPlayShown = false
+    }
+
+    /** this phone's address on Wi-Fi (or on its own hotspot); mobile data addresses are not reachable from the network */
+    private fun lanAddress(): String? = runCatching {
+        java.net.NetworkInterface.getNetworkInterfaces().asSequence()
+            .filter { it.isUp && !it.isLoopback && listOf("wlan", "swlan", "ap", "eth", "softap").any { p -> it.name.startsWith(p) } }
+            .sortedBy { if (it.name.startsWith("wlan")) 0 else 1 }
+            .flatMap { it.inetAddresses.asSequence() }.firstOrNull { it is java.net.Inet4Address }?.hostAddress
+    }.getOrNull()
 
     /** Screen recording on/off: an MP4 in the Movies folder of the guest's card (the phone's shared folder). */
     private fun toggleRecording() {
@@ -1426,6 +1512,8 @@ open class VmActivity : ComponentActivity() {
                 skinScreen = vmTheme.skinScreen.takeIf { vmTheme.isSkin },
                 name = vm.img.name, onDismiss = { phone3d = false },
             )
+            // Moon Valley, 2026-11-19: the address of browser play
+            webPlayUrl?.let { url -> if (webPlayShown) WebPlayDialog(url, onStop = { stopWebPlay() }, onDismiss = { webPlayShown = false }) }
 
             // minimized: a small pill, tap it to bring the card back
             val pillState = state == GuestVm.State.BOOTING || state == GuestVm.State.PREPARING
@@ -1538,6 +1626,9 @@ open class VmActivity : ComponentActivity() {
                     DropdownMenuItem(text = { Text(stringResource(if (vncOn) R.string.m_vnc_stop else R.string.m_vnc)) },
                         leadingIcon = { Icon(Icons.Rounded.Cast, null) },
                         enabled = running || vncOn, onClick = { menu = false; toggleVnc() })
+                    DropdownMenuItem(text = { Text(stringResource(if (webPlayUrl != null) R.string.webplay_menu_on else R.string.webplay_menu)) },
+                        leadingIcon = { Icon(Icons.Rounded.Public, null) },
+                        enabled = running || webPlayUrl != null, onClick = { menu = false; openWebPlay() })
                     DropdownMenuItem(text = { Text(stringResource(if (recOn) R.string.m_record_stop else R.string.m_record)) },
                         leadingIcon = { Icon(Icons.Rounded.Videocam, null) },
                         enabled = running || recOn, onClick = { menu = false; toggleRecording() })

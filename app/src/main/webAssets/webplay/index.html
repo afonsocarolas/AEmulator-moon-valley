@@ -1,0 +1,243 @@
+<!doctype html>
+<!-- Added for AEmulator Moon Valley, 2026-11-19: "Play in a browser" (served by core/WebPlayServer.kt). GPL-3.0. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="referrer" content="no-referrer">
+<title>AEmulator Moon Valley</title>
+<style>
+  :root { --ink: #f4f1de; --dim: rgba(244,241,222,.62); --glass: rgba(255,255,255,.08); --edge: rgba(244,241,222,.18); --moon: #f6e7a6; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: radial-gradient(ellipse at 50% 0%, #1e2556 0%, #0e1433 45%, #03040c 100%) fixed;
+    color: var(--ink); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column; overflow: hidden; user-select: none; -webkit-user-select: none;
+  }
+  #stars { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+  header, footer { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 10px 16px; flex-wrap: wrap; }
+  header { justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: .02em; }
+  .moon { width: 22px; height: 22px; border-radius: 50%; background: var(--moon); box-shadow: inset -6px -2px 0 0 #c9b86a, 0 0 18px rgba(246,231,166,.5); }
+  #status { color: var(--dim); font-size: 13px; }
+  #status.live::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #7ee2a8; margin-right: 6px; }
+  main { position: relative; z-index: 1; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 0 16px; }
+  #frame { position: relative; height: 100%; max-width: 100%; display: flex; align-items: center; justify-content: center; }
+  #screen {
+    display: block; max-width: 100%; max-height: 100%; border-radius: 14px; background: #000;
+    box-shadow: 0 0 0 10px #15182a, 0 0 0 11px var(--edge), 0 20px 60px rgba(0,0,0,.6);
+    touch-action: none; cursor: crosshair; -webkit-user-drag: none;
+  }
+  #wait { position: absolute; color: var(--dim); text-align: center; }
+  footer { justify-content: center; }
+  button {
+    font: inherit; color: var(--ink); background: var(--glass); border: 1px solid var(--edge); border-radius: 999px;
+    padding: 8px 16px; cursor: pointer; min-width: 44px;
+  }
+  button:hover { background: rgba(255,255,255,.14); }
+  button:active { transform: scale(.96); }
+  #type { font: inherit; color: var(--ink); background: var(--glass); border: 1px solid var(--edge); border-radius: 999px; padding: 8px 14px; width: 170px; }
+  #type::placeholder { color: var(--dim); }
+  .hint { color: var(--dim); font-size: 12px; text-align: center; width: 100%; }
+  @media (max-width: 600px) { .hint { display: none; } button { padding: 8px 12px; } #type { width: 120px; } }
+</style>
+</head>
+<body>
+<canvas id="stars"></canvas>
+<header>
+  <div class="brand"><div class="moon"></div>AEmulator Moon Valley</div>
+  <div id="status">Connecting…</div>
+</header>
+<main>
+  <div id="frame">
+    <img id="screen" alt="The machine's screen" draggable="false">
+    <div id="wait">Waiting for the picture…</div>
+  </div>
+</main>
+<footer>
+  <button data-nav="back" title="Back (Esc, or right-click)">◁</button>
+  <button data-nav="home" title="Home">○</button>
+  <button data-nav="recents" title="Recent apps">▢</button>
+  <button data-nav="voldown" title="Volume down">🔉</button>
+  <button data-nav="volup" title="Volume up">🔊</button>
+  <button data-nav="power" title="Power">⏻</button>
+  <input id="type" placeholder="Type here…" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <button id="full" title="Full screen">⛶</button>
+  <div class="hint">Click or touch the screen · wheel scrolls · right-click is Back · keys go to the machine</div>
+</footer>
+<script>
+(() => {
+  "use strict";
+  const key = new URLSearchParams(location.search).get("k") || "";
+  const screen = document.getElementById("screen");
+  const wait = document.getElementById("wait");
+  const status = document.getElementById("status");
+  const typeBox = document.getElementById("type");
+
+  // ---- the picture: one frame after the other, as fast as the network and the phone allow
+  let shown = null, fails = 0;
+  async function frames() {
+    for (;;) {
+      try {
+        const r = await fetch("/frame.jpg?k=" + encodeURIComponent(key) + "&t=" + Date.now(), { cache: "no-store" });
+        if (r.status === 403) { status.textContent = "This link has expired. Start it again in the app."; status.className = ""; return; }
+        if (r.ok) {
+          const url = URL.createObjectURL(await r.blob());
+          await new Promise(res => { screen.onload = screen.onerror = res; screen.src = url; });
+          if (shown) URL.revokeObjectURL(shown);
+          shown = url; fails = 0;
+          wait.style.display = "none";
+          status.textContent = "Live"; status.className = "live";
+        } else await sleep(400);
+      } catch (e) {
+        fails++;
+        status.textContent = "Reconnecting…"; status.className = "";
+        await sleep(Math.min(3000, 300 * fails));
+      }
+    }
+  }
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  // ---- input: commands go out in order, one request at a time; finger states that pile up are merged
+  const queue = [];
+  let sending = false;
+  function send(line) {
+    if (line.startsWith("t") && queue.length && queue[queue.length - 1].startsWith("t") && line !== "t" && queue[queue.length - 1] !== "t")
+      queue[queue.length - 1] = line;
+    else queue.push(line);
+    pump();
+  }
+  async function pump() {
+    if (sending || !queue.length) return;
+    sending = true;
+    const body = queue.splice(0).join("\n");
+    try { await fetch("/input?k=" + encodeURIComponent(key), { method: "POST", body, headers: { "Content-Type": "text/plain" } }); }
+    catch (e) { /* the picture loop reports it */ }
+    sending = false;
+    pump();
+  }
+
+  function guestXY(ev) {
+    const r = screen.getBoundingClientRect();
+    const w = screen.naturalWidth || 1, h = screen.naturalHeight || 1;
+    const x = Math.round((ev.clientX - r.left) / r.width * w);
+    const y = Math.round((ev.clientY - r.top) / r.height * h);
+    return [Math.max(0, Math.min(w - 1, x)), Math.max(0, Math.min(h - 1, y))];
+  }
+  const fingers = new Map();   // pointerId -> {slot, x, y}
+  function slotFor() { for (let s = 0; s < 10; s++) if (![...fingers.values()].some(f => f.slot === s)) return s; return -1; }
+  function sendFingers() { send("t" + [...fingers.values()].map(f => ` ${f.slot}:${f.x}:${f.y}`).join("")); }
+
+  screen.addEventListener("pointerdown", ev => {
+    if (ev.pointerType === "mouse" && ev.button === 2) { send("n back"); ev.preventDefault(); return; }
+    if (ev.pointerType === "mouse" && ev.button !== 0) return;
+    const slot = slotFor(); if (slot < 0) return;
+    screen.setPointerCapture(ev.pointerId);
+    const [x, y] = guestXY(ev);
+    fingers.set(ev.pointerId, { slot, x, y });
+    sendFingers(); ev.preventDefault();
+    if (document.activeElement === typeBox) typeBox.blur();
+  });
+  screen.addEventListener("pointermove", ev => {
+    const f = fingers.get(ev.pointerId); if (!f) return;
+    const [x, y] = guestXY(ev);
+    if (x === f.x && y === f.y) return;
+    f.x = x; f.y = y; sendFingers();
+  });
+  const lift = ev => { if (fingers.delete(ev.pointerId)) sendFingers(); };
+  screen.addEventListener("pointerup", lift);
+  screen.addEventListener("pointercancel", lift);
+  screen.addEventListener("contextmenu", ev => ev.preventDefault());
+
+  // the mouse wheel becomes a swipe; turns close together are added up
+  let wheel = 0, wheelAt = null, wheelTimer = 0;
+  screen.addEventListener("wheel", ev => {
+    ev.preventDefault();
+    const scale = (screen.naturalHeight || 800) / screen.getBoundingClientRect().height;
+    wheel += (ev.deltaMode === 1 ? ev.deltaY * 40 : ev.deltaY) * scale;
+    wheelAt = guestXY(ev);
+    clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(() => { send(`w ${wheelAt[0]} ${wheelAt[1]} ${Math.round(wheel)}`); wheel = 0; }, 120);
+  }, { passive: false });
+
+  document.querySelectorAll("[data-nav]").forEach(b => b.addEventListener("click", () => send("n " + b.dataset.nav)));
+  document.getElementById("full").addEventListener("click", () => {
+    if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.();
+  });
+
+  // ---- keyboard: KeyboardEvent.code (where the key is) to Linux key codes, so any layout works
+  const CODES = { Escape: 158, Backspace: 14, Tab: 15, Enter: 28, NumpadEnter: 28, Space: 57, CapsLock: 58,
+    ShiftLeft: 42, ShiftRight: 54, ControlLeft: 29, ControlRight: 97, AltLeft: 56, AltRight: 100,
+    Minus: 12, Equal: 13, BracketLeft: 26, BracketRight: 27, Semicolon: 39, Quote: 40, Backquote: 41, Backslash: 43,
+    Comma: 51, Period: 52, Slash: 53, ArrowUp: 103, ArrowLeft: 105, ArrowRight: 106, ArrowDown: 108,
+    Home: 102, End: 116, PageUp: 115, PageDown: 114, Insert: 110, Delete: 111, F1: 139, F2: 580, F3: 217 };
+  "1234567890".split("").forEach((d, i) => CODES["Digit" + d] = 2 + i);
+  "qwertyuiop".split("").forEach((c, i) => CODES["Key" + c.toUpperCase()] = 16 + i);
+  "asdfghjkl".split("").forEach((c, i) => CODES["Key" + c.toUpperCase()] = 30 + i);
+  "zxcvbnm".split("").forEach((c, i) => CODES["Key" + c.toUpperCase()] = 44 + i);
+  const held = new Set();
+  document.addEventListener("keydown", ev => {
+    if (document.activeElement === typeBox || ev.metaKey) return;
+    const c = CODES[ev.code]; if (!c) return;
+    ev.preventDefault();
+    if (held.has(c)) return;       // the guest makes its own key repeat
+    held.add(c); send(`k ${c} 1`);
+  });
+  document.addEventListener("keyup", ev => {
+    const c = CODES[ev.code]; if (!c || !held.has(c)) return;
+    ev.preventDefault(); held.delete(c); send(`k ${c} 0`);
+  });
+  window.addEventListener("blur", () => { held.forEach(c => send(`k ${c} 0`)); held.clear(); });
+
+  // the text box: for phones and tablets without a real keyboard; every character becomes key presses
+  const PLAIN = { "1":2,"2":3,"3":4,"4":5,"5":6,"6":7,"7":8,"8":9,"9":10,"0":11,"-":12,"=":13,"[":26,"]":27,";":39,"'":40,"`":41,"\\":43,",":51,".":52,"/":53," ":57,"\n":28 };
+  const SHIFTED = { "!":2,"@":3,"#":4,"$":5,"%":6,"^":7,"&":8,"*":9,"(":10,")":11,"_":12,"+":13,"{":26,"}":27,":":39,"\"":40,"~":41,"|":43,"<":51,">":52,"?":53 };
+  function typeChar(ch) {
+    let code = PLAIN[ch], shift = false;
+    const lower = ch.toLowerCase();
+    if (code === undefined && SHIFTED[ch] !== undefined) { code = SHIFTED[ch]; shift = true; }
+    if (code === undefined && CODES["Key" + lower.toUpperCase()] && lower.length === 1 && lower >= "a" && lower <= "z") {
+      code = CODES["Key" + lower.toUpperCase()]; shift = ch !== lower;
+    }
+    if (code === undefined) return;
+    if (shift) send("k 42 1");
+    send(`k ${code} 1`); send(`k ${code} 0`);
+    if (shift) send("k 42 0");
+  }
+  typeBox.addEventListener("keydown", ev => {
+    if (ev.key === "Enter") { ev.preventDefault(); [...typeBox.value].forEach(typeChar); typeChar("\n"); typeBox.value = ""; }
+    else if (ev.key === "Backspace" && !typeBox.value) { ev.preventDefault(); send("k 14 1"); send("k 14 0"); }
+  });
+  // phones send whole characters, not keys: type them as they come in
+  typeBox.addEventListener("input", ev => {
+    if (ev.inputType === "insertText" && ev.data && !matchMedia("(hover: hover)").matches) {
+      [...ev.data].forEach(typeChar); typeBox.value = "";
+    } else if (ev.inputType === "deleteContentBackward" && !matchMedia("(hover: hover)").matches) {
+      send("k 14 1"); send("k 14 0");
+    }
+  });
+
+  // ---- a few slow stars, because this is Moon Valley
+  const sky = document.getElementById("stars"), g = sky.getContext("2d");
+  let stars = [];
+  function sizeSky() {
+    sky.width = innerWidth * devicePixelRatio; sky.height = innerHeight * devicePixelRatio;
+    stars = Array.from({ length: 90 }, () => ({ x: Math.random(), y: Math.random() * .7, r: Math.random() * 1.3 + .3, p: Math.random() * 6.28 }));
+  }
+  function twinkle(t) {
+    g.clearRect(0, 0, sky.width, sky.height);
+    for (const s of stars) {
+      g.globalAlpha = .35 + .35 * Math.sin(t / 1400 + s.p);
+      g.fillStyle = "#f4f1de";
+      g.beginPath(); g.arc(s.x * sky.width, s.y * sky.height, s.r * devicePixelRatio, 0, 6.29); g.fill();
+    }
+    requestAnimationFrame(twinkle);
+  }
+  addEventListener("resize", sizeSky); sizeSky(); requestAnimationFrame(twinkle);
+
+  frames();
+})();
+</script>
+</body>
+</html>

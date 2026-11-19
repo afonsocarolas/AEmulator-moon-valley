@@ -29,4 +29,15 @@
     <string name="back_title">YotaPhone back screen</string>
     <string name="back_none">No picture from the back screen yet.\n%1$s</string>
     <string name="back_hint">The e-ink back screen, as the firmware draws it. Touch it like the real back screen: the picture follows within a second.</string>
+    <!-- Added 2026-11-19: playing a running machine from a web browser -->
+    <string name="webplay_menu">Play in a browser</string>
+    <string name="webplay_menu_on">Browser play (on)</string>
+    <string name="webplay_title">Play in a browser</string>
+    <string name="webplay_open">On a computer, tablet or another phone on the same Wi-Fi, open this address in any browser:</string>
+    <string name="webplay_copy">Copy</string>
+    <string name="webplay_copied">Address copied</string>
+    <string name="webplay_share">Share</string>
+    <string name="webplay_stop">Stop</string>
+    <string name="webplay_warning">Anyone with this address on your network can see and control this machine. Stop it when you are done; a new start makes a new address.</string>
+    <string name="webplay_no_network">No Wi-Fi address found. Connect this phone to Wi-Fi (or turn on its hotspot) and try again.</string>
 </resources>
