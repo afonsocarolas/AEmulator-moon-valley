@@ -28,5 +28,5 @@
     <string name="back_menu">Back screen</string>
     <string name="back_title">YotaPhone back screen</string>
     <string name="back_none">No picture from the back screen yet.\n%1$s</string>
-    <string name="back_hint">The e-ink back screen, as the firmware draws it. It refreshes every 2 seconds; touch on it is not supported yet.</string>
+    <string name="back_hint">The e-ink back screen, as the firmware draws it. Touch it like the real back screen: the picture follows within a second.</string>
 </resources>

@@ -147,6 +147,33 @@ class InputService(private val paths: VmPaths, private val log: (String) -> Unit
     private val padServer = deviceServer("dev/aemu_touchpad", "touchpad", padClients)
     private val keyboardServer = deviceServer("dev/aemu_keyboard", "keyboard", keyboardClients)
 
+    /**
+     * Added for AEmulator Moon Valley, 2026-11-19: the YotaPhone 2 back screen's touch panel. The guest shim answers for
+     * /dev/input/aemu-epdtouch as "bs_virtual_ts" (native/guestshim/vinput.h), the name of the real panel, so the
+     * firmware's own bs_virtual_ts.idc ties it to the e-ink display. Only made where the engine marked the back screen
+     * (system/etc/aemu-epd, see TreeFixer); coordinates 0..[TouchpadProtocol.PAD_MAX] across the panel, like the touchpad.
+     */
+    private val epdClients = CopyOnWriteArrayList<Client>()
+    private val epdServer = deviceServer("dev/aemu_epdtouch", "back screen touch", epdClients)
+    private val epd = TouchpadProtocol()
+    val epdTouchConnected: Int get() = epdClients.size
+
+    private fun serveEpdTouch() {
+        val node = java.io.File(paths.root, "dev/input/aemu-epdtouch")
+        if (!java.io.File(paths.root, "system/etc/aemu-epd").isFile) { node.delete(); return }
+        node.parentFile?.mkdirs()
+        if (!node.exists()) node.createNewFile()
+        epdServer.start(log)
+        log("input: back screen touch (bs_virtual_ts) for the YotaPhone e-ink display")
+    }
+
+    /** Touches on the back screen; x and y run 0..[TouchpadProtocol.PAD_MAX] across the e-ink panel. */
+    @Synchronized
+    fun epdTouch(now: List<TouchpadProtocol.Contact>) {
+        val bytes = epd.frame(now, System.nanoTime())
+        if (bytes.isNotEmpty()) postTo(epdClients, bytes)
+    }
+
     private fun writeIdc(name: String, text: String) = runCatching {
         java.io.File(paths.root, "system/usr/idc/$name.idc").apply {
             parentFile?.mkdirs()
@@ -211,6 +238,7 @@ class InputService(private val paths: VmPaths, private val log: (String) -> Unit
     fun serve(): Boolean {
         writeTouchIdc()
         serveMouseKeyboard()
+        serveEpdTouch()
         val ok = server.start(log)
         if (trackballEnabled) {
             // An emulator-owned node: no vendor library or original image is patched.

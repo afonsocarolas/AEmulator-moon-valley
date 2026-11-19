@@ -1417,7 +1417,8 @@ open class VmActivity : ComponentActivity() {
                 enter = fadeIn(), exit = fadeOut(),
                 modifier = Modifier.align(Alignment.Center),
             ) { BootCard(seconds, onMinimize = { cardOverride = true }) }
-            if (backScreen) BackScreenDialog(capture = { captureBackScreen() }, onDismiss = { backScreen = false })
+            if (backScreen) BackScreenDialog(capture = { captureBackScreen() }, onDismiss = { backScreen = false },
+                touch = { contacts -> vm.input.epdTouch(contacts) })
             // Moon Valley, 2026-11-17: the running machine on a phone that turns in 3D (its own window, the machine runs on)
             if (phone3d) Phone3DDialog(
                 guestW = guest.w, guestH = guest.h, grab = { px -> grabFrame(px) },

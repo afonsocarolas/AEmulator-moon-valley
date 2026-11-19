@@ -2,7 +2,11 @@
  * Same technique as trackball.h: the guest's EventHub finds an empty node in /dev/input (made by the app), open()
  * returns a socket to the app and the EVIOC* questions are answered here, so no guest binary or file is patched.
  * Self-contained: needs only sys3() and fail() from the including shim. Used by the ARM shim (aemushim.c) and the x86-32 shim
- * (aemushim_x86.c); the two differ in how a socket is made (own system calls on ARM, socketcall on i386). */
+ * (aemushim_x86.c); the two differ in how a socket is made (own system calls on ARM, socketcall on i386).
+ *
+ * Modified for AEmulator Moon Valley, 2026-11-19: a third device, the YotaPhone 2 back screen's touch panel. Its kernel
+ * driver names it "bs_virtual_ts", and the firmware's /system/usr/idc/bs_virtual_ts.idc ("touch.display = EPD") makes
+ * Yota's InputReader send its touches to the e-ink display (display 2). The app makes the node only for such a firmware. */
 #ifndef VINPUT_H
 #define VINPUT_H
 
@@ -10,9 +14,12 @@
 #define VI_PAD_SOCKET "/dev/aemu_touchpad"
 #define VI_KBD_NODE "/dev/input/aemu-keyboard"
 #define VI_KBD_SOCKET "/dev/aemu_keyboard"
+#define VI_EPD_NODE "/dev/input/aemu-epdtouch"
+#define VI_EPD_SOCKET "/dev/aemu_epdtouch"
 #define VI_NONE 0
 #define VI_PAD 1
 #define VI_KBD 2
+#define VI_EPD 3
 #define VI_PAD_MAX 4095
 
 struct vi_sockaddr { unsigned short family; char path[108]; };
@@ -44,6 +51,7 @@ static long vi_getpeername(long fd, void *addr, unsigned *len) { return sys3(287
 static const char *vi_socket_of(const char *path) {
     if (vi_equal(path, VI_PAD_NODE)) return VI_PAD_SOCKET;
     if (vi_equal(path, VI_KBD_NODE)) return VI_KBD_SOCKET;
+    if (vi_equal(path, VI_EPD_NODE)) return VI_EPD_SOCKET;
     return 0;
 }
 
@@ -73,8 +81,8 @@ static int vinput_fd(int fd) {
     if (vi_getpeername(fd, &addr, &len) < 0 || addr.family != 1) return VI_NONE;
     unsigned n = 0;
     while (n < sizeof(addr.path) && addr.path[n]) n++;
-    for (int kind = VI_PAD; kind <= VI_KBD; kind++) {
-        const char *suffix = kind == VI_PAD ? VI_PAD_SOCKET : VI_KBD_SOCKET;
+    for (int kind = VI_PAD; kind <= VI_EPD; kind++) {
+        const char *suffix = kind == VI_PAD ? VI_PAD_SOCKET : kind == VI_KBD ? VI_KBD_SOCKET : VI_EPD_SOCKET;
         unsigned sl = 0;
         while (suffix[sl]) sl++;
         if (n < sl) continue;
@@ -98,12 +106,13 @@ static int vinput_ioctl(int kind, unsigned req, void *arg) {
     if (nr == 1 /* EVIOCGVERSION */ && len == 4) { *(unsigned *)b = 0x10001; return 0; }
     if (nr == 2 /* EVIOCGID */ && len == 8) {
         unsigned short *id = arg;
-        id[0] = 6 /* BUS_VIRTUAL */; id[1] = 0; id[2] = (unsigned short)(kind == VI_PAD ? 2 : 3); id[3] = 1;
+        id[0] = 6 /* BUS_VIRTUAL */; id[1] = 0; id[2] = (unsigned short)(kind == VI_PAD ? 2 : kind == VI_KBD ? 3 : 4); id[3] = 1;
         return 0;
     }
     if (nr >= 6 && nr <= 8) { /* name, physical path, unique ID */
         const char *s = kind == VI_PAD ? (nr == 6 ? "AEmulator Touchpad" : nr == 7 ? "aemu/touchpad" : "aemu-touchpad")
-                                       : (nr == 6 ? "AEmulator Keyboard" : nr == 7 ? "aemu/keyboard" : "aemu-keyboard");
+                      : kind == VI_KBD ? (nr == 6 ? "AEmulator Keyboard" : nr == 7 ? "aemu/keyboard" : "aemu-keyboard")
+                                       : (nr == 6 ? "bs_virtual_ts" : nr == 7 ? "aemu/epdtouch" : "aemu-epdtouch");
         unsigned i = 0;
         if (!len) return 0;
         while (i + 1 < len && s[i]) { b[i] = s[i]; i++; }
@@ -114,20 +123,22 @@ static int vinput_ioctl(int kind, unsigned req, void *arg) {
         (nr >= 0x20 && nr <= 0x3f)) {
         for (unsigned i = 0; i < len; i++) b[i] = 0;
         if (nr == 9 && kind == VI_PAD) vi_bit(b, len, 0 /* INPUT_PROP_POINTER */);
+        if (nr == 9 && kind == VI_EPD) vi_bit(b, len, 1 /* INPUT_PROP_DIRECT: a touch screen */);
         if (nr == 0x20) { /* EV bits */
             vi_bit(b, len, 0 /* EV_SYN */); vi_bit(b, len, 1 /* EV_KEY */);
-            if (kind == VI_PAD) vi_bit(b, len, 3 /* EV_ABS */);
+            if (kind == VI_PAD || kind == VI_EPD) vi_bit(b, len, 3 /* EV_ABS */);
         }
         if (nr == 0x21) { /* KEY bits */
             if (kind == VI_KBD) { for (unsigned k = 1; k < 249; k++) vi_bit(b, len, k); }
+            else if (kind == VI_EPD) vi_bit(b, len, 330 /* BTN_TOUCH */);
             else { vi_bit(b, len, 272 /* BTN_LEFT */); vi_bit(b, len, 273 /* BTN_RIGHT */); vi_bit(b, len, 330 /* BTN_TOUCH */); }
         }
-        if (nr == 0x23 && kind == VI_PAD) { /* ABS bits: protocol A multi-touch */
+        if (nr == 0x23 && (kind == VI_PAD || kind == VI_EPD)) { /* ABS bits: protocol A multi-touch */
             vi_bit(b, len, 48); vi_bit(b, len, 53); vi_bit(b, len, 54); vi_bit(b, len, 57); vi_bit(b, len, 58);
         }
         return (int)len;
     }
-    if (nr >= 0x40 && nr < 0x80 && kind == VI_PAD) { /* EVIOCGABS(axis): value, min, max, fuzz, flat[, resolution] */
+    if (nr >= 0x40 && nr < 0x80 && (kind == VI_PAD || kind == VI_EPD)) { /* EVIOCGABS(axis): value, min, max, fuzz, flat[, resolution] */
         int *a = arg;
         unsigned axis = nr - 0x40, words = len / 4;
         for (unsigned i = 0; i < words && i < 6; i++) a[i] = 0;
