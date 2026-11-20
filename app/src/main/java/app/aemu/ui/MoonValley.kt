@@ -1,5 +1,6 @@
 /* Added for AEmulator Moon Valley, 2026-11-14: the moon UI (title, starry sky over a valley, moon-phase button)
- * and the Moon Valley easter egg. GPL-3.0; see LICENSE and NOTICE.md. */
+ * and the Moon Valley easter egg. 2026-11-20: the moon button shows the real moon of tonight; a real full moon has a
+ * secret of its own. GPL-3.0; see LICENSE and NOTICE.md. */
 package app.aemu.ui
 
 import androidx.compose.animation.core.Animatable
@@ -15,6 +16,14 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.platform.LocalContext
+import app.aemu.core.MoonPhase
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.CircleShape
@@ -138,6 +147,28 @@ private fun DrawScope.drawMoon(center: Offset, radius: Float, phase: Float, lit:
     }
 }
 
+/**
+ * Added 2026-11-20: the moon as it looks in the sky, [illumination] 0..1 of its face lit, on the right while [waxing]
+ * and on the left while waning (as seen from the northern hemisphere). The terminator is half an ellipse.
+ */
+private fun DrawScope.drawRealMoon(center: Offset, radius: Float, illumination: Float, waxing: Boolean, lit: Color, dark: Color) {
+    drawCircle(dark, radius, center)
+    val k = illumination.coerceIn(0f, 1f)
+    if (k < 0.005f) return
+    val e = radius * kotlin.math.abs(1f - 2f * k)            // half-width of the terminator ellipse
+    val circle = Rect(center, radius)
+    val ellipse = Rect(center.x - e, center.y - radius, center.x + e, center.y + radius)
+    val path = Path().apply {
+        // the right half of the disc, top to bottom ...
+        arcTo(circle, -90f, 180f, forceMoveTo = true)
+        // ... and back up along the terminator: through the right (a crescent) or the left (gibbous)
+        if (k < 0.5f) arcTo(ellipse, 90f, -180f, forceMoveTo = false) else arcTo(ellipse, 90f, 180f, forceMoveTo = false)
+        close()
+    }
+    if (waxing) drawPath(path, lit)
+    else withTransform({ scale(-1f, 1f, center) }) { drawPath(path, lit) }
+}
+
 /** The home screen's backdrop: a sky that follows the theme, twinkling stars up top, a moonlit valley below. */
 @Composable
 fun MoonSky(modifier: Modifier = Modifier) {
@@ -158,39 +189,107 @@ fun MoonSky(modifier: Modifier = Modifier) {
     }
 }
 
+/** the real moon now, looked at again every ten minutes */
+@Composable
+private fun rememberRealMoon(): MoonPhase {
+    var moon by remember { mutableStateOf(MoonPhase.at(System.currentTimeMillis())) }
+    LaunchedEffect(Unit) {
+        while (true) { delay(10 * 60 * 1000L); moon = MoonPhase.at(System.currentTimeMillis()) }
+    }
+    return moon
+}
+
 /**
- * The moon in the home screen's bar. Each tap waxes it a little; reach the full moon (7 quick taps) and Moon Valley
- * opens. It wanes back to a crescent when left alone for a few seconds.
+ * The moon in the home screen's bar: tonight's real moon (2026-11-20). Each tap waxes it a little; reach the full moon
+ * (7 quick taps) and Moon Valley opens. It goes back to the real moon when left alone for a few seconds. On a real
+ * full-moon night it glows gold and one tap is enough. A long press tells about tonight's moon.
  */
 @Composable
 fun MoonPhaseButton(onFullMoon: () -> Unit) {
+    val real = rememberRealMoon()
+    val needed = if (real.isFullMoon) 1 else TAPS_TO_FULL_MOON
     var taps by remember { mutableIntStateOf(0) }
+    var tonight by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
+    val start = real.illumination.toFloat()
     val phase by animateFloatAsState(
-        0.25f + 0.75f * taps / TAPS_TO_FULL_MOON,
+        start + (1f - start) * taps / needed,
         spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow), label = "phase",
     )
     LaunchedEffect(taps) {
-        if (taps in 1 until TAPS_TO_FULL_MOON) { delay(3000); taps = 0 }
-        if (taps >= TAPS_TO_FULL_MOON) { delay(450); onFullMoon(); taps = 0 }
+        if (taps in 1 until needed) { delay(3000); taps = 0 }
+        if (taps >= needed) { delay(450); onFullMoon(); taps = 0 }
     }
+    val glow by rememberInfiniteTransition(label = "fullglow").animateFloat(
+        0.25f, 0.5f, infiniteRepeatable(tween(1800), RepeatMode.Reverse), label = "glow",
+    )
     val cs = MaterialTheme.colorScheme
     val night = cs.surface.luminance() < 0.5f
-    val lit = if (night) MoonLight else cs.primary
+    val lit = if (real.isFullMoon) MoonGold else if (night) MoonLight else cs.primary
     val desc = stringResource(R.string.moon_button)
-    IconButton(onClick = {
-        if (taps < TAPS_TO_FULL_MOON) {
-            taps++
-            haptic.performHapticFeedback(if (taps == TAPS_TO_FULL_MOON) HapticFeedbackType.LongPress else HapticFeedbackType.TextHandleMove)
-        }
-    }, modifier = Modifier.semantics { contentDescription = desc }) {
+    Box(
+        Modifier.size(48.dp).clip(CircleShape)
+            .combinedClickable(
+                onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); tonight = true },
+                onClick = {
+                    if (taps < needed) {
+                        taps++
+                        haptic.performHapticFeedback(if (taps == needed) HapticFeedbackType.LongPress else HapticFeedbackType.TextHandleMove)
+                    }
+                },
+            )
+            .semantics { contentDescription = desc },
+        contentAlignment = Alignment.Center,
+    ) {
         Canvas(Modifier.size(24.dp)) {
             val r = size.minDimension / 2f
-            if (taps == TAPS_TO_FULL_MOON) drawCircle(MoonGold.copy(alpha = 0.35f), r * 1.0f, center)
-            drawMoon(center, r * 0.82f, phase, lit, lit.copy(alpha = 0.18f), craters = false)
+            if (real.isFullMoon) drawCircle(MoonGold.copy(alpha = glow), r * 1.0f, center)
+            else if (taps == needed) drawCircle(MoonGold.copy(alpha = 0.35f), r * 1.0f, center)
+            drawRealMoon(center, r * 0.82f, phase, real.waxing, lit, lit.copy(alpha = 0.18f))
         }
     }
+    if (tonight) MoonTonightDialog(real) { tonight = false }
 }
+
+/** Long press on the moon: tonight's moon, how much of it is lit, and when the next full moon comes. */
+@Composable
+private fun MoonTonightDialog(moon: MoonPhase, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    val names = stringArrayResource(R.array.moon_phase_names)
+    val next = remember(moon) {
+        val t = MoonPhase.nextFullMoon(System.currentTimeMillis())
+        java.text.DateFormat.getDateInstance(java.text.DateFormat.FULL).format(java.util.Date(t))
+    }
+    val seen = remember { app.aemu.AppPrefs.prefs(ctx).getInt(FULL_MOONS_SEEN_KEY, 0) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Canvas(Modifier.size(72.dp)) {
+                val r = size.minDimension / 2f
+                if (moon.isFullMoon) drawCircle(MoonGold.copy(alpha = 0.3f), r, center)
+                drawRealMoon(center, r * 0.85f, moon.illumination.toFloat(), moon.waxing,
+                    if (moon.isFullMoon) MoonGold else MoonLight, Color(0xFF2A2F4A))
+            }
+        },
+        title = { Text(stringResource(R.string.moon_tonight_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()) {
+                Text(names[moon.name.ordinal], style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                Text(stringResource(R.string.moon_tonight_lit, (moon.illumination * 100).toInt()), textAlign = TextAlign.Center)
+                if (moon.isFullMoon) Text(stringResource(R.string.moon_tonight_full), textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.primary)
+                else Text(stringResource(R.string.moon_tonight_next, next), textAlign = TextAlign.Center)
+                if (seen > 0) Text(stringResource(R.string.moon_full_seen, seen), style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.moon_egg_close)) } },
+    )
+}
+
+private const val FULL_MOONS_SEEN_KEY = "moon_full_moons_seen"
+private const val LAST_FULL_MOON_KEY = "moon_last_full_lunation"
 
 private const val STARS_CAUGHT_KEY = "moon_stars_caught"
 
@@ -332,6 +431,22 @@ fun MoonValleyEgg(onDismiss: () -> Unit) {
         }
         val lines = stringArrayResource(R.array.moon_egg_lines)
         val line = remember { lines.random() }
+        // 2026-11-20: on a real full-moon night the moon rises gold, and each full moon visited here is counted once
+        val ctx = LocalContext.current
+        val realFull = remember { MoonPhase.at(System.currentTimeMillis()).isFullMoon }
+        val seen = remember {
+            if (!realFull) 0 else {
+                val sp = app.aemu.AppPrefs.prefs(ctx)
+                val lunation = MoonPhase.lunation(System.currentTimeMillis())
+                var n = sp.getInt(FULL_MOONS_SEEN_KEY, 0)
+                if (sp.getLong(LAST_FULL_MOON_KEY, Long.MIN_VALUE) != lunation) {
+                    n++
+                    sp.edit().putInt(FULL_MOONS_SEEN_KEY, n).putLong(LAST_FULL_MOON_KEY, lunation).apply()
+                }
+                n
+            }
+        }
+        val moonColor = if (realFull) MoonGold else MoonLight
 
         Box(
             Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF03040C), Color(0xFF0E1433), Color(0xFF1E2556)))),
@@ -356,7 +471,7 @@ fun MoonValleyEgg(onDismiss: () -> Unit) {
                 val r = size.minDimension * 0.17f
                 val c = Offset(size.width * 0.5f, size.height * (0.95f - 0.62f * rise.value))
                 drawCircle(Brush.radialGradient(listOf(MoonGold.copy(alpha = 0.35f), Color.Transparent), c, r * 2.6f * glow), r * 2.6f * glow, c)
-                drawMoon(c, r, 1f, MoonLight, MoonLight)
+                drawMoon(c, r, 1f, moonColor, moonColor)
                 drawValley(Color(0xFF151B40), Color(0xFF0A0E24), height = size.height * 0.22f)
             }
             Column(
@@ -364,9 +479,13 @@ fun MoonValleyEgg(onDismiss: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(stringResource(R.string.moon_egg_title), style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold, color = MoonLight, textAlign = TextAlign.Center)
-                Text(line, style = MaterialTheme.typography.bodyLarge, color = MoonLight.copy(alpha = 0.8f), textAlign = TextAlign.Center)
+                Text(stringResource(if (realFull) R.string.moon_egg_full_title else R.string.moon_egg_title),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold, color = moonColor, textAlign = TextAlign.Center)
+                Text(if (realFull) stringResource(R.string.moon_egg_full_line) else line,
+                    style = MaterialTheme.typography.bodyLarge, color = MoonLight.copy(alpha = 0.8f), textAlign = TextAlign.Center)
+                if (realFull) Text(stringResource(R.string.moon_full_seen, seen), style = MaterialTheme.typography.bodyMedium,
+                    color = MoonGold.copy(alpha = 0.9f), textAlign = TextAlign.Center)
                 Spacer(Modifier.height(8.dp))
                 FilledTonalButton(onClick = onDismiss) { Text(stringResource(R.string.moon_egg_close)) }
             }

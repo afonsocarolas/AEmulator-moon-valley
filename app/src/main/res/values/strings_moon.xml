@@ -33,11 +33,29 @@
     <string name="webplay_menu">Play in a browser</string>
     <string name="webplay_menu_on">Browser play (on)</string>
     <string name="webplay_title">Play in a browser</string>
-    <string name="webplay_open">On a computer, tablet or another phone on the same Wi-Fi, open this address in any browser:</string>
+    <string name="webplay_open">Scan the code with another phone, or open this address in any browser on the same Wi-Fi:</string>
     <string name="webplay_copy">Copy</string>
     <string name="webplay_copied">Address copied</string>
     <string name="webplay_share">Share</string>
     <string name="webplay_stop">Stop</string>
     <string name="webplay_warning">Anyone with this address on your network can see and control this machine. Stop it when you are done; a new start makes a new address.</string>
+    <!-- Added 2026-11-20: the real moon on the home screen (long press the moon) -->
+    <string name="moon_tonight_title">Tonight\'s moon</string>
+    <string name="moon_tonight_lit">%1$d%% of its face is lit</string>
+    <string name="moon_tonight_next">Next full moon: %1$s</string>
+    <string name="moon_tonight_full">It\'s a real full moon tonight! Tap the moon once to visit Moon Valley.</string>
+    <string name="moon_full_seen">Full moons you have seen in Moon Valley: %1$d</string>
+    <string name="moon_egg_full_title">A real full moon over Moon Valley</string>
+    <string name="moon_egg_full_line">Look up tonight: the same moon is shining over you right now.</string>
+    <string-array name="moon_phase_names">
+        <item>New moon</item>
+        <item>Waxing crescent</item>
+        <item>First quarter</item>
+        <item>Waxing gibbous</item>
+        <item>Full moon</item>
+        <item>Waning gibbous</item>
+        <item>Last quarter</item>
+        <item>Waning crescent</item>
+    </string-array>
     <string name="webplay_no_network">No Wi-Fi address found. Connect this phone to Wi-Fi (or turn on its hotspot) and try again.</string>
 </resources>

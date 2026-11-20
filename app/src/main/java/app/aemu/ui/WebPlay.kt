@@ -6,7 +6,21 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import app.aemu.core.QrCode
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,7 +37,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.aemu.R
 
-/** Where to point a browser, with copy and share; Stop ends it (the link stops working at once). */
+/**
+ * Where to point a browser: a QR code to scan with another phone (added 2026-11-20), the address itself, copy and share.
+ * Stop ends it (the link stops working at once).
+ */
 @Composable
 fun WebPlayDialog(url: String, onStop: () -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
@@ -31,8 +48,17 @@ fun WebPlayDialog(url: String, onStop: () -> Unit, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.webplay_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.webplay_open))
+                val qr = remember(url) { QrCode.encode(url) }
+                if (qr != null) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    // black on white whatever the theme, with the quiet zone of four modules that scanners need
+                    Canvas(Modifier.size(208.dp).clip(RoundedCornerShape(12.dp)).background(Color.White)) {
+                        val cell = size.minDimension / (qr.size + 8)
+                        for (y in 0 until qr.size) for (x in 0 until qr.size) if (qr.isDark(x, y))
+                            drawRect(Color.Black, Offset((x + 4) * cell, (y + 4) * cell), Size(cell + 0.5f, cell + 0.5f))
+                    }
+                }
                 SelectionContainer {
                     Text(url, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                 }
