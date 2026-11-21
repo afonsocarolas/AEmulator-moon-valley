@@ -10,6 +10,10 @@ Moon Valley easter egg (`app/src/main/java/app/aemu/ui/MoonValley.kt`). Files mo
 dated "Moon Valley" / "Modified for AEmulator Moon Valley" notice. All AEmulator Plus, Sunset and AEmulator notices
 below are retained unchanged.
 
+2026-11-21: VR mode on Meta Quest (`app/src/main/cpp/vr.cpp`, `core/VrNative.kt`, `ui/VrActivity.kt`). It links the
+Khronos OpenXR loader (`org.khronos.openxr:openxr_loader_for_android`, Apache License 2.0, shipped as
+`libopenxr_loader.so`), which is licensed independently of this app.
+
 ---
 
 # AEmulator Plus modification notice

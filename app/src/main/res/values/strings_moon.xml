@@ -58,4 +58,13 @@
         <item>Waning crescent</item>
     </string-array>
     <string name="webplay_no_network">No Wi-Fi address found. Connect this phone to Wi-Fi (or turn on its hotspot) and try again.</string>
+    <!-- Added 2026-11-21: VR mode on Meta Quest (the machine's screen in front of you under the Moon Valley sky) -->
+    <string name="vr_menu">VR mode</string>
+    <string name="vr_failed">VR mode could not start: %1$s</string>
+    <string name="vr_no_machine">no machine is running</string>
+    <string-array name="vr_hint">
+        <item>Trigger: touch · Grip: move the screen (stick: size and distance)</item>
+        <item>A / X: Home · B / Y: Back · Stick click: Recent apps</item>
+        <item>Stick forward / back: scroll · Menu button: leave VR</item>
+    </string-array>
 </resources>

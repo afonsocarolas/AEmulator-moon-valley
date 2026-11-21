@@ -187,6 +187,15 @@ import androidx.compose.material.icons.rounded.AspectRatio
 object VmHost {
     @Volatile var vm: GuestVm? = null
 
+    // Moon Valley, 2026-11-21: VR mode (ui/VrActivity) borrows the GPU bridge's output while it runs
+    /** true while VR mode has the bridge drawing into its own surface; the window then only remembers its surface */
+    @Volatile var vrOn = false
+    /** the window's SurfaceView surface, handed back when VR mode ends */
+    @Volatile var panelSurface: android.view.Surface? = null
+    /** the window's guest screen, for VR mode: its size, a frame from fb0, and whether the GPU bridge shows it */
+    @Volatile var screen: ScreenSource? = null
+    class ScreenSource(val w: Int, val h: Int, val grab: (IntArray) -> Boolean, val gpu: () -> Boolean)
+
     /**
      * Turns this process's machine off and takes the process with it. Works without the machine's window (a tab minimized,
      * or a shutdown asked for from another tab): the window, if there is one, is told to close first.
@@ -374,9 +383,9 @@ open class VmActivity : ComponentActivity() {
         box = FrameLayout(this)
         surfaceView = SurfaceView(this)
         surfaceView.holder.addCallback(object : SurfaceHolder.Callback {
-            override fun surfaceCreated(h: SurfaceHolder) { vm.surface = h.surface }
-            override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, ht: Int) { vm.surface = h.surface }
-            override fun surfaceDestroyed(h: SurfaceHolder) { vm.surface = null }
+            override fun surfaceCreated(h: SurfaceHolder) { VmHost.panelSurface = h.surface; if (!VmHost.vrOn) vm.surface = h.surface }
+            override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, ht: Int) { VmHost.panelSurface = h.surface; if (!VmHost.vrOn) vm.surface = h.surface }
+            override fun surfaceDestroyed(h: SurfaceHolder) { VmHost.panelSurface = null; if (!VmHost.vrOn) vm.surface = null }
         })
         // the guest's restart needs a fresh native window for the in-app GPU bridge (see GuestVm.reseatGlSurface)
         vm.resurface = {
@@ -403,6 +412,7 @@ open class VmActivity : ComponentActivity() {
         if (direct) { surfaceView.holder.setFixedSize(gw, gh); guest.direct = { app.aemu.core.GlHost.presented() } }
         surfaceView.visibility = if (useBridge || direct) View.VISIBLE else View.GONE
         guest.passthrough = useBridge
+        VmHost.screen = VmHost.ScreenSource(gw, gh, { px -> grabFrame(px) }, { guest.passthrough })
         box.addView(surfaceView, FrameLayout.LayoutParams(-1, -1))
         box.addView(guest, FrameLayout.LayoutParams(-1, -1))
         // the theme's frame picture, behind the guest screen
@@ -1115,6 +1125,20 @@ open class VmActivity : ComponentActivity() {
         webPlayShown = true
     }
 
+    /** Moon Valley, 2026-11-21: only on a VR headset (the menu item shows there) */
+    private val onHeadset by lazy { app.aemu.core.VrNative.isHeadset(this) }
+
+    /** VR mode, in this machine's process (one VrActivity class per process slot) */
+    private fun openVr() {
+        val cls = when (this) {
+            is VmActivity1, is VmOverlayActivity1 -> VrActivity1::class.java
+            is VmActivity2, is VmOverlayActivity2 -> VrActivity2::class.java
+            is VmActivity3, is VmOverlayActivity3 -> VrActivity3::class.java
+            else -> VrActivity::class.java
+        }
+        runCatching { startActivity(android.content.Intent(this, cls)) }.onFailure { toast(getString(R.string.m_failed)) }
+    }
+
     private fun stopWebPlay() {
         webPlay?.stop()
         webPlay = null; webPlayUrl = null; webPlayShown = false
@@ -1626,6 +1650,9 @@ open class VmActivity : ComponentActivity() {
                     DropdownMenuItem(text = { Text(stringResource(if (vncOn) R.string.m_vnc_stop else R.string.m_vnc)) },
                         leadingIcon = { Icon(Icons.Rounded.Cast, null) },
                         enabled = running || vncOn, onClick = { menu = false; toggleVnc() })
+                    if (onHeadset) DropdownMenuItem(text = { Text(stringResource(R.string.vr_menu)) },
+                        leadingIcon = { Icon(Icons.Rounded.ViewInAr, null) },
+                        enabled = running, onClick = { menu = false; openVr() })
                     DropdownMenuItem(text = { Text(stringResource(if (webPlayUrl != null) R.string.webplay_menu_on else R.string.webplay_menu)) },
                         leadingIcon = { Icon(Icons.Rounded.Public, null) },
                         enabled = running || webPlayUrl != null, onClick = { menu = false; openWebPlay() })

@@ -58,10 +58,14 @@ android {
         // 28: гостевые бинарники запускаются из каталога данных приложения (W^X для targetSdk>=29)
         //noinspection ExpiredTargetSdkVersion
         targetSdk = 28
-        versionCode = 50
-        versionName = "0.0.0.3.28" // <AEmulator base>.<Moon Valley release>
+        versionCode = 51
+        versionName = "0.0.0.3.29" // <AEmulator base>.<Moon Valley release>
         ndk { abiFilters += listOf("arm64-v8a") }
+        // Moon Valley, 2026-11-21: VR mode (src/main/cpp: OpenXR through the Khronos loader)
+        externalNativeBuild { cmake { arguments += listOf("-DANDROID_STL=c++_shared") } }
     }
+    ndkVersion = "29.0.14206865"
+    externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
 
     signingConfigs {
         if (canSign) create("release") {
@@ -108,7 +112,7 @@ android {
             optIn.add("androidx.compose.material3.ExperimentalMaterial3Api")
         }
     }
-    buildFeatures { compose = true; buildConfig = true }
+    buildFeatures { compose = true; buildConfig = true; prefab = true }
     lint { abortOnError = false; checkReleaseBuilds = false }
 }
 
@@ -132,6 +136,8 @@ dependencies {
     implementation("com.github.luben:zstd-jni:1.5.7-4@aar")
     implementation("org.anarres.lzo:lzo-commons:1.0.6")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    // Moon Valley, 2026-11-21: the Khronos OpenXR loader (Apache-2.0), for VR mode
+    implementation("org.khronos.openxr:openxr_loader_for_android:1.1.65")
     testImplementation("junit:junit:4.13.2")
 }
 
