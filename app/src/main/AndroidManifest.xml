@@ -26,6 +26,13 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <!-- Added for AEmulator Moon Valley, 2026-11-21: Meta Quest headsets (Horizon OS) run the app as a 2D window. They
+         have no touchscreen (the controllers point and click) and no GPS, so neither may be required. -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen.multitouch" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
 
     <application
         android:name=".AemuApp"
@@ -42,11 +49,16 @@
         android:theme="@style/Theme.AEmulator"
         tools:targetApi="28">
 
+        <!-- Moon Valley, 2026-11-21: the Meta Quest headsets this 2D app is meant for -->
+        <meta-data android:name="com.oculus.supportedDevices" android:value="quest2|questpro|quest3|quest3s" />
+
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
             android:launchMode="standard"
             android:windowSoftInputMode="adjustResize">
+            <!-- Moon Valley, 2026-11-21: the window's size where windows float (Meta Quest panels, desktop mode) -->
+            <layout android:defaultWidth="1024dp" android:defaultHeight="720dp" android:minWidth="480dp" android:minHeight="480dp" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -88,7 +100,9 @@
             android:resizeableActivity="true"
             android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.AEmulator.Vm" />
+            android:theme="@style/Theme.AEmulator.Vm">
+            <layout android:defaultWidth="1200dp" android:defaultHeight="800dp" android:minWidth="480dp" android:minHeight="480dp" />
+        </activity>
 
         <!-- Added for AEmulator Plus, 2026-11-09: process slot 1 (a machine of its own, running next to the others) -->
         <activity
@@ -100,7 +114,9 @@
             android:resizeableActivity="true"
             android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.AEmulator.Vm" />
+            android:theme="@style/Theme.AEmulator.Vm">
+            <layout android:defaultWidth="1200dp" android:defaultHeight="800dp" android:minWidth="480dp" android:minHeight="480dp" />
+        </activity>
 
         <!-- Added for AEmulator Plus, 2026-11-09: process slot 2 (a machine of its own, running next to the others) -->
         <activity
@@ -112,7 +128,9 @@
             android:resizeableActivity="true"
             android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.AEmulator.Vm" />
+            android:theme="@style/Theme.AEmulator.Vm">
+            <layout android:defaultWidth="1200dp" android:defaultHeight="800dp" android:minWidth="480dp" android:minHeight="480dp" />
+        </activity>
 
         <!-- Added for AEmulator Plus, 2026-11-09: process slot 3 (a machine of its own, running next to the others) -->
         <activity
@@ -124,7 +142,9 @@
             android:resizeableActivity="true"
             android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.AEmulator.Vm" />
+            android:theme="@style/Theme.AEmulator.Vm">
+            <layout android:defaultWidth="1200dp" android:defaultHeight="800dp" android:minWidth="480dp" android:minHeight="480dp" />
+        </activity>
 
         <!-- Added for AEmulator Plus, 2026-11-09: the translucent windows of a tab with two machines (the one on top) -->
         <activity
@@ -136,7 +156,9 @@
             android:resizeableActivity="true"
             android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.AEmulator.Vm.Overlay" />
+            android:theme="@style/Theme.AEmulator.Vm.Overlay">
+            <layout android:defaultWidth="1200dp" android:defaultHeight="800dp" android:minWidth="480dp" android:minHeight="480dp" />
+        </activity>
         <activity
             android:name=".ui.VmOverlayActivity1"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|density|uiMode|navigation"
@@ -146,7 +168,9 @@
             android:resizeableActivity="true"
             android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.AEmulator.Vm.Overlay" />
+            android:theme="@style/Theme.AEmulator.Vm.Overlay">
+            <layout android:defaultWidth="1200dp" android:defaultHeight="800dp" android:minWidth="480dp" android:minHeight="480dp" />
+        </activity>
         <activity
             android:name=".ui.VmOverlayActivity2"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|density|uiMode|navigation"
@@ -156,7 +180,9 @@
             android:resizeableActivity="true"
             android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.AEmulator.Vm.Overlay" />
+            android:theme="@style/Theme.AEmulator.Vm.Overlay">
+            <layout android:defaultWidth="1200dp" android:defaultHeight="800dp" android:minWidth="480dp" android:minHeight="480dp" />
+        </activity>
         <activity
             android:name=".ui.VmOverlayActivity3"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|density|uiMode|navigation"
@@ -166,7 +192,9 @@
             android:resizeableActivity="true"
             android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.AEmulator.Vm.Overlay" />
+            android:theme="@style/Theme.AEmulator.Vm.Overlay">
+            <layout android:defaultWidth="1200dp" android:defaultHeight="800dp" android:minWidth="480dp" android:minHeight="480dp" />
+        </activity>
 
         <!-- Added for AEmulator Plus, 2026-11-10: the tab bar's dialogs, in a transparent window over everything (both halves of a split) -->
         <activity
