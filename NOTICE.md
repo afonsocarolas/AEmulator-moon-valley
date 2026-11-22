@@ -14,6 +14,9 @@ below are retained unchanged.
 Khronos OpenXR loader (`org.khronos.openxr:openxr_loader_for_android`, Apache License 2.0, shipped as
 `libopenxr_loader.so`), which is licensed independently of this app.
 
+2026-11-22: Sony's packed precompiled code ("codx", LZMA inside a stub ELF; Xperia C3 and other Sony Lollipop firmware)
+is unpacked before the first start (`core/SonyCodx.kt`, called from `TreeFixer.protectOat`).
+
 ---
 
 # AEmulator Plus modification notice

@@ -206,6 +206,8 @@ class TreeFixer(
     }.onFailure { log("framework oat: copies not kept: ${it.message}") }
 
     private fun protectOat() {
+        // Moon Valley, 2026-11-22: Sony's packed odex files are unpacked first, so the kept copies are the real ones
+        if (img.api in 21..23) runCatching { SonyCodx.unpackTree(File(root, "system"), log) }.onFailure { log("codx: ${it.message}") }
         keepOatCopies()
         val sys = File(root, "system")
         var n = 0
