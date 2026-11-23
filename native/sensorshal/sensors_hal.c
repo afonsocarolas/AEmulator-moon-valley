@@ -13,6 +13,7 @@
 
 extern int open(const char *path, int flags, ...);
 extern long read(int fd, void *buf, unsigned long n);
+extern long write(int fd, const void *buf, unsigned long n);
 extern int close(int fd);
 extern void *calloc(unsigned long n, unsigned long size);
 extern void free(void *p);
@@ -85,6 +86,8 @@ struct poll_device {
     int active;
     int flush_pending;
     int mi_layout;
+    int hall_active;
+    float hall;
 };
 
 #define HARDWARE_MODULE_TAG 0x484d4f44
@@ -94,14 +97,31 @@ struct poll_device {
 #define META_DATA_FLUSH_COMPLETE 1
 #define HANDLE_ACCEL 1
 #define GRAVITY 9.80665f
+/* Moon Valley, 2026-11-23: the hinge of a two-screen phone (ZTE Axon M: sensor type 34; 1 closed, 2 tent, 3 flat open).
+ * Listed only where the engine put HALL_MARKER. The host may send records of this type; until it does, it is flat open.
+ * An on-change sensor: SensorService repeats the last value to whoever starts listening later. */
+#define SENSOR_TYPE_HALL 34
+#define HANDLE_HALL 2
+#define HALL_MARKER "/system/etc/aemu-hall"
+#define SENSOR_FLAG_ON_CHANGE_MODE 2
 
 static const struct sensor_t sensors[] = { {
     .name = "AEmulator 3-axis Accelerometer", .vendor = "AEmulator", .version = 1, .handle = HANDLE_ACCEL,
     .type = SENSOR_TYPE_ACCELEROMETER, .maxRange = 4.0f * GRAVITY, .resolution = 1.0f / 4096.0f, .power = 0.2f,
     .minDelay = 10000, .stringType = "android.sensor.accelerometer", .maxDelay = 1000000, .flags = 0,
+}, {
+    .name = "AEmulator hinge", .vendor = "AEmulator", .version = 1, .handle = HANDLE_HALL,
+    .type = SENSOR_TYPE_HALL, .maxRange = 3.0f, .resolution = 1.0f, .power = 0.1f,
+    .minDelay = 0, .stringType = "app.aemu.sensor.hinge", .maxDelay = 0, .flags = SENSOR_FLAG_ON_CHANGE_MODE,
 } };
 
-static int get_list(struct sensors_module *m, const struct sensor_t **list) { (void)m; *list = sensors; return 1; }
+static int get_list(struct sensors_module *m, const struct sensor_t **list) {
+    (void)m; *list = sensors;
+    int fd = open(HALL_MARKER, 0 /* O_RDONLY */ | O_CLOEXEC);
+    if (fd < 0) return 1;
+    close(fd);
+    return 2;
+}
 
 static int64_t now_ns(void) {
     struct timespec_ t;
@@ -109,12 +129,24 @@ static int64_t now_ns(void) {
     return (int64_t)t.sec * 1000000000LL + t.nsec;
 }
 
-static int dev_activate(struct poll_device *d, int handle, int en) { if (handle == HANDLE_ACCEL) d->active = en; return 0; }
+static int dev_activate(struct poll_device *d, int handle, int en) {
+    if (handle == HANDLE_ACCEL) d->active = en;
+    if (handle == HANDLE_HALL) {
+        d->hall_active = en;
+        if (en && d->fd >= 0) {
+            /* poll() sleeps in read(): tell it, through the FIFO, to report the hinge as it is (16 bytes: never split) */
+            int32_t rec[4] = { SENSOR_TYPE_HALL, 0, 0, 0 };
+            *(float *)&rec[1] = d->hall;
+            (void)write(d->fd, rec, sizeof(rec));
+        }
+    }
+    return 0;
+}
 static int dev_set_delay(struct poll_device *d, int handle, int64_t ns) { (void)d; (void)handle; (void)ns; return 0; }
 static int dev_batch(struct poll_device *d, int handle, int flags, int64_t p, int64_t t) { (void)d; (void)handle; (void)flags; (void)p; (void)t; return 0; }
 static int dev_flush(struct poll_device *d, int handle) {
     if (d->mi_layout) return 0;   /* a vendor call sits in this slot there */
-    if (handle != HANDLE_ACCEL) return -22;
+    if (handle != HANDLE_ACCEL) return handle == HANDLE_HALL ? 0 : -22;
     d->flush_pending++;
     return 0;
 }
@@ -143,6 +175,18 @@ static int dev_poll(struct poll_device *d, struct sensors_event_t *out, int coun
             struct timespec_ ts = { 0, 200000000 };
             nanosleep(&ts, 0);
             continue;
+        }
+        if (rec[0] == SENSOR_TYPE_HALL) {
+            d->hall = *(float *)&rec[1];
+            if (!d->hall_active) continue;
+            struct sensors_event_t *h = out;
+            for (unsigned i = 0; i < sizeof(*h) / 4; i++) ((uint32_t *)h)[i] = 0;
+            h->version = (int32_t)sizeof(*h);
+            h->sensor = HANDLE_HALL;
+            h->type = SENSOR_TYPE_HALL;
+            h->timestamp = now_ns();
+            h->data[0] = d->hall;
+            return 1;
         }
         if (!d->active || rec[0] != SENSOR_TYPE_ACCELEROMETER) continue;
         struct sensors_event_t *e = out;
@@ -189,6 +233,7 @@ static int sensors_open(const struct hw_module *m, const char *id, struct hw_dev
     d->vendor58 = dev_vendor;
     d->batch_mi = dev_batch_mi;
     d->flush_mi = dev_flush_mi;
+    d->hall = 3.0f;
     /* O_RDWR: no EOF when the host has not started writing yet */
     d->fd = open("/dev/aemu_sensors", O_RDWR | O_CLOEXEC);
     *out = &d->common;

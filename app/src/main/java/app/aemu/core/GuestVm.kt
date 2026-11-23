@@ -2333,7 +2333,11 @@ class GuestVm(val ctx: Context, val img: GuestImage, val lowPowerBoot: Boolean =
         runCatching { guestShell("service call SurfaceFlinger 1008 i32 1", 15_000) }
     }
 
+    /** Moon Valley, 2026-11-23: the window looks at some properties too (the display mode of a two-screen phone) */
+    @Volatile var propWatch: ((String, String) -> Unit)? = null
+
     private fun onProp(k: String, v: String) {
+        propWatch?.let { w -> runCatching { w(k, v) } }
         if (k == "sys.powerctl") { powerRequest(v); return }
         if (k == "service.bootanim.exit") {
             for ((start, name) in BootMediaServices.triggers(paths.root, k, v)) onCtl(start, name)

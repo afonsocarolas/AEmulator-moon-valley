@@ -17,6 +17,10 @@ Khronos OpenXR loader (`org.khronos.openxr:openxr_loader_for_android`, Apache Li
 2026-11-22: Sony's packed precompiled code ("codx", LZMA inside a stub ELF; Xperia C3 and other Sony Lollipop firmware)
 is unpacked before the first start (`core/SonyCodx.kt`, called from `TreeFixer.protectOat`).
 
+2026-11-23: two-screen phones (ZTE Axon M, 7.1.2): both panels as one 2160x1920 screen, a hinge sensor
+(`native/sensorshal`, shipped as `engines/common/sensors.aemu_hall64.so`), the modes in the menu (`core/DualScreen.kt`,
+`ui/DualScreenUi.kt`).
+
 ---
 
 # AEmulator Plus modification notice

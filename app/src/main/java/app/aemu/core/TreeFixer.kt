@@ -226,6 +226,7 @@ class TreeFixer(
         if (owners) seedOwners()
         installEngineFiles()
         installSensorHal()
+        runCatching { installHinge() }.onFailure { log("dual screen: ${it.message}") }
         File(root, "system/framework/aemu-setup.jar").let { dst ->
             dst.parentFile?.mkdirs()
             eaOpen("engines/common/aemu-setup.jar").use { src -> dst.outputStream().use { src.copyTo(it) } }
@@ -3683,6 +3684,25 @@ class TreeFixer(
             log("camera: standard HAL1 host-camera bridge installed")
             if (CameraHalFallback.configure(root, destination, img.api <= 20)) log("camera: legacy default HAL fallback installed")
         }.onFailure { error("camera HAL installation failed: ${it.message}") }
+    }
+
+    /**
+     * Moon Valley, 2026-11-23: a two-screen phone with both panels on (see DualScreen) gets the sensor HAL that also has
+     * the hinge; it lists the hinge only while the marker is there, so with one panel it is the same HAL as before.
+     */
+    private fun installHinge() {
+        if (!DualScreen.supported(img, root)) return
+        val marker = File(root, DualScreen.HALL_MARKER)
+        if (!DualScreen.isWide(img.settings.width, img.settings.height)) { marker.delete(); return }
+        if (img.settings.disableSensors == true || img.sensorsOff) { marker.delete(); log("dual screen: sensors are disabled, so there is no hinge (the M button stays off)"); return }
+        val hal = File(root, "system/lib64/hw/sensors.default.so")
+        hal.parentFile?.mkdirs()
+        hal.delete()
+        eaOpen("engines/common/sensors.aemu_hall64.so").use { i -> hal.outputStream().use { i.copyTo(it) } }
+        hal.setReadable(true, false)
+        marker.parentFile?.mkdirs()
+        marker.writeText("1\n"); marker.setReadable(true, false)
+        log("dual screen: both panels (${img.settings.width}x${img.settings.height}), hinge sensor installed (open)")
     }
 
     private fun installSensorHal() {

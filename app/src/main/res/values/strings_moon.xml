@@ -67,4 +67,13 @@
         <item>A / X: Home · B / Y: Back · Stick click: Recent apps</item>
         <item>Stick forward / back: scroll · Menu button: leave VR</item>
     </string-array>
+    <!-- Added 2026-11-23: two-screen phones (ZTE Axon M) -->
+    <string name="dual_title">Dual screen</string>
+    <string name="dual_hint">This phone has two screens. Choose how the firmware uses them, or use its own M button.</string>
+    <string name="dual_single">One screen</string>
+    <string name="dual_dual">Dual: an app on each screen</string>
+    <string name="dual_extended">Extended: one app on both screens</string>
+    <string name="dual_mirror">Mirror: the same on both screens</string>
+    <string name="dual_enable">Use both screens</string>
+    <string name="dual_restart">Takes effect when the machine is started again.</string>
 </resources>

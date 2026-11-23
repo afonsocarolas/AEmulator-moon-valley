@@ -362,8 +362,12 @@ open class VmActivity : ComponentActivity() {
             img.copy(settings = img.settings.copy(width = width and -2, height = height and -2,
                 density = resources.displayMetrics.densityDpi))
         } else img
+        // Moon Valley, 2026-11-23: a two-screen phone gets both of its panels (see core/DualScreen)
+        val vmRootDir = app.aemu.core.VmPaths(this, img.id).root
+        val machine = if (app.aemu.core.DualScreen.supported(resolved, vmRootDir) && app.aemu.core.DualScreen.enabled(this, img.id))
+            resolved.copy(settings = app.aemu.core.DualScreen.widen(resolved.settings)) else resolved
         vm = if (cur != null && cur.img.id == img.id) cur
-            else GuestVm(applicationContext, resolved, intent.getBooleanExtra(EXTRA_LOW_POWER, false)).also { it.recoveryMode = intent.getBooleanExtra(EXTRA_RECOVERY, false); VmHost.vm = it }
+            else GuestVm(applicationContext, machine, intent.getBooleanExtra(EXTRA_LOW_POWER, false)).also { it.recoveryMode = intent.getBooleanExtra(EXTRA_RECOVERY, false); VmHost.vm = it }
         vm.onPower = { reboot, reason -> runOnUiThread { if (reboot) rebootVm(reason == "recovery") else stopVm() } }
         // this window is a tab; the slot file says which machine this process runs
         VmSlots.adopt(applicationContext, vm.img.id)
@@ -397,6 +401,15 @@ open class VmActivity : ComponentActivity() {
             }
         }
         guestW = gw; guestH = gh
+        dualFirmware = app.aemu.core.DualScreen.supported(vm.img, vm.paths.root)
+        dualOn = dualFirmware && !vm.recoveryMode && app.aemu.core.DualScreen.isWide(gw, gh)
+        if (dualOn) {
+            vm.propWatch = { k, v ->
+                if (k == app.aemu.core.DualScreen.MODE_PROP || k == "service.bootanim.exit")
+                    runOnUiThread { if (k == app.aemu.core.DualScreen.MODE_PROP) lookAtPanels(mode = v) else lookAtPanels(exit = v) }
+            }
+            lookAtPanels()
+        }
         guest = GuestScreen(this, gw, gh).apply {
             input = vm.input
             fb = if (vm.recoveryMode) app.aemu.core.RecoveryImage.fb(vm.paths) else vm.paths.fb
@@ -464,13 +477,14 @@ open class VmActivity : ComponentActivity() {
             if (root.width <= 0 || root.height <= 0) return@layout
             val aw = root.width - root.paddingLeft - root.paddingRight
             val ah = root.height - root.paddingTop - root.paddingBottom
+            val shownW = if (dualOn && dualOnePanel) gw / 2 else gw
             val skin = vmTheme.skinScreen.takeIf { vmTheme.isSkin }
             val skinPic = skinSize
             val fv = frameView
             // a device skin is a portrait phone with its bar (if any) at the bottom
             if (skin != null && skinPic != null && fv != null && controlsTurns == 0 && aw <= ah) {
                 val l = app.aemu.core.DeviceSkin.layout(aw, (ah - controlsHeightPx).coerceAtLeast(1), skinPic.first, skinPic.second,
-                    skin, vmTheme.skinKeys, gw, gh)
+                    skin, vmTheme.skinKeys, shownW, gh)
                 fun place(v: View, b: app.aemu.core.DeviceSkin.Box) {
                     val p = v.layoutParams as FrameLayout.LayoutParams
                     if (p.width != b.width || p.height != b.height || p.leftMargin != b.left || p.topMargin != b.top || p.gravity != (Gravity.LEFT or Gravity.TOP)) {
@@ -482,6 +496,7 @@ open class VmActivity : ComponentActivity() {
                 box.rotation = 0f
                 place(fv, l.image)
                 place(box, l.guest)
+                layPanels(l.guest.width)
                 if (guestTopPx != l.guest.top) guestTopPx = l.guest.top
                 if (skinLayout != l) skinLayout = l
                 return@layout
@@ -501,7 +516,8 @@ open class VmActivity : ComponentActivity() {
             val minH = maxOf((96 * resources.displayMetrics.density).toInt(), area.height / 5)
             val frac = userFrac
             val fit = if (frac != null) DisplayGeometry.place(area, frac, minW, minH)
-                else DisplayGeometry.fit(rw, rh, gw, gh, controlsHeightPx, controlsTurns, s.hostResolution)
+                else DisplayGeometry.fit(rw, rh, shownW, gh, controlsHeightPx, controlsTurns, s.hostResolution)
+            layPanels(fit.width)
             resizeOverlay?.let { o ->
                 if (o.area != area || o.screen != fit || o.minWidth != minW || o.minHeight != minH) {
                     o.area = area; o.screen = fit; o.minWidth = minW; o.minHeight = minH; o.invalidate()
@@ -964,9 +980,10 @@ open class VmActivity : ComponentActivity() {
         if (g.w <= 0 || g.h <= 0) return
         if (g.passthrough && surfaceView.width > 0 && surfaceView.height > 0 && surfaceView.holder.surface.isValid) {
             // PixelCopy scales into the (small) bitmap it is given
-            val bmp = android.graphics.Bitmap.createBitmap(270, (270L * g.h / g.w).toInt().coerceIn(1, 810), android.graphics.Bitmap.Config.ARGB_8888)
+            val shown = if (dualOn && dualOnePanel) g.w / 2 else g.w
+            val bmp = android.graphics.Bitmap.createBitmap(270, (270L * g.h / shown).toInt().coerceIn(1, 810), android.graphics.Bitmap.Config.ARGB_8888)
             runCatching {
-                android.view.PixelCopy.request(surfaceView, bmp, { res ->
+                android.view.PixelCopy.request(surfaceView, android.graphics.Rect(0, 0, shown, g.h), bmp, { res ->
                     thread {
                         if (res == android.view.PixelCopy.SUCCESS && !app.aemu.core.Screenshot.isBlank(bmp)) app.aemu.core.Screenshot.saveThumbnail(dir, bmp)
                         bmp.recycle()
@@ -986,10 +1003,11 @@ open class VmActivity : ComponentActivity() {
         val fmt = if (vm.recoveryMode) vm.recoveryFormat else g.format
         // in-app GPU bridge: the guest never writes fb0, the frame only exists on the SurfaceView
         if (g.passthrough && surfaceView.width > 0 && surfaceView.height > 0 && surfaceView.holder.surface.isValid) {
-            val bmp = android.graphics.Bitmap.createBitmap(surfaceView.width, surfaceView.height, android.graphics.Bitmap.Config.ARGB_8888)
+            val one = dualOn && dualOnePanel   // (a two-screen phone with one panel in use: that panel)
+            val bmp = android.graphics.Bitmap.createBitmap(if (one) surfaceView.width / 2 else surfaceView.width, surfaceView.height, android.graphics.Bitmap.Config.ARGB_8888)
             val h = android.os.Handler(android.os.Looper.getMainLooper())
             runCatching {
-                android.view.PixelCopy.request(surfaceView, bmp, { res ->
+                android.view.PixelCopy.request(surfaceView, if (one) android.graphics.Rect(0, 0, g.w / 2, g.h) else null, bmp, { res ->
                     thread {
                         val saved = if (res == android.view.PixelCopy.SUCCESS)
                             runCatching { app.aemu.core.Screenshot.takeBitmap(this, vmId, bmp, g.w, g.h) }.getOrNull() else null
@@ -1123,6 +1141,38 @@ open class VmActivity : ComponentActivity() {
         webPlayUrl = "http://$ip:${server.boundPort}/?k=$key"
         vm.log("webplay: open http://$ip:${server.boundPort}/ (key shown in the app)")
         webPlayShown = true
+    }
+
+    // Moon Valley, 2026-11-23: a two-screen phone (see core/DualScreen)
+    private var dualFirmware by mutableStateOf(false)
+    /** this start of the machine has both panels, side by side on one screen */
+    private var dualOn by mutableStateOf(false)
+    private var dualMode by mutableStateOf(app.aemu.core.DualScreen.SINGLE)
+    /** only the left panel is in use: the window shows that half of the screen */
+    private var dualOnePanel = false
+    private var dualDialog by mutableStateOf(false)
+
+    /** which panels the firmware uses now; [mode] and [exit] are values just set (else they are read from the properties) */
+    private fun lookAtPanels(mode: String? = null, exit: String? = null) {
+        val m = mode ?: vm.props.get(app.aemu.core.DualScreen.MODE_PROP)
+        val booted = vm.bootDoneAt != 0L || (exit ?: vm.props.get("service.bootanim.exit")) == "1"
+        dualMode = m?.trim()?.toIntOrNull() ?: app.aemu.core.DualScreen.SINGLE
+        dualOnePanel = app.aemu.core.DualScreen.onePanel(m, booted)
+        updateGuestLayout?.invoke()
+    }
+
+    /** the guest's screen inside its box: as wide as the box, or (left panel only) twice as wide, its right half cut off */
+    private fun layPanels(boxWidth: Int) {
+        val want = if (dualOn && dualOnePanel) boxWidth * 2 else FrameLayout.LayoutParams.MATCH_PARENT
+        for (v in listOf<View>(surfaceView, guest)) {
+            val p = v.layoutParams as? FrameLayout.LayoutParams ?: continue
+            if (p.width != want) { p.width = want; p.gravity = Gravity.LEFT or Gravity.TOP; v.layoutParams = p }
+        }
+    }
+
+    private fun switchPanels(mode: Int) {
+        dualDialog = false
+        guestAsync(app.aemu.core.DualScreen.switchCommand(mode)) { out -> vm.log("dual screen: mode $mode: ${out.trim().take(200)}") }
     }
 
     /** Moon Valley, 2026-11-21: only on a VR headset (the menu item shows there) */
@@ -1530,6 +1580,11 @@ open class VmActivity : ComponentActivity() {
             if (backScreen) BackScreenDialog(capture = { captureBackScreen() }, onDismiss = { backScreen = false },
                 touch = { contacts -> vm.input.epdTouch(contacts) })
             // Moon Valley, 2026-11-17: the running machine on a phone that turns in 3D (its own window, the machine runs on)
+            if (dualDialog) DualScreenDialog(active = dualOn, mode = dualMode,
+                enabled = app.aemu.core.DualScreen.enabled(this@VmActivity, vm.img.id),
+                onMode = { switchPanels(it) },
+                onEnabled = { app.aemu.core.DualScreen.setEnabled(this@VmActivity, vm.img.id, it) },
+                onDismiss = { dualDialog = false })
             if (phone3d) Phone3DDialog(
                 guestW = guest.w, guestH = guest.h, grab = { px -> grabFrame(px) },
                 skin = if (vmTheme.isSkin) (frameView?.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap else null,
@@ -1650,6 +1705,9 @@ open class VmActivity : ComponentActivity() {
                     DropdownMenuItem(text = { Text(stringResource(if (vncOn) R.string.m_vnc_stop else R.string.m_vnc)) },
                         leadingIcon = { Icon(Icons.Rounded.Cast, null) },
                         enabled = running || vncOn, onClick = { menu = false; toggleVnc() })
+                    if (dualFirmware) DropdownMenuItem(text = { Text(stringResource(R.string.dual_title)) },
+                        leadingIcon = { Icon(Icons.Rounded.AspectRatio, null) },
+                        enabled = running, onClick = { menu = false; dualDialog = true })
                     if (onHeadset) DropdownMenuItem(text = { Text(stringResource(R.string.vr_menu)) },
                         leadingIcon = { Icon(Icons.Rounded.ViewInAr, null) },
                         enabled = running, onClick = { menu = false; openVr() })
