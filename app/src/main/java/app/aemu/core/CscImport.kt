@@ -10,7 +10,7 @@ import java.nio.file.Files
 /**
  * Samsung CSC data (/system/csc: customer.xml, others.xml, sales_code.dat, ...), see [CscPackage]. Used by the
  * firmware importer (automatically, when a CSC package is found in the firmware and build.prop says Samsung) and by
- * the VM settings (a CSC file picked by hand). Never touches anything outside system/csc.
+ * the VM settings (a CSC file picked by hand). Never touches anything outside system/csc and system/T9DB (keyboard data).
  */
 internal object CscImport {
     /** build.prop names Samsung as the manufacturer or brand. A tree without build.prop is not treated as Samsung. */
@@ -27,13 +27,13 @@ internal object CscImport {
     /** A real CSC is in place: sales_code.dat exists (the empty stub the app writes has none). */
     fun present(root: File) = File(root, "system/csc/sales_code.dat").isFile
 
-    /** Writes [files] (target path -> bytes, already under "system/csc/") into [root]; returns how many were written. */
+    /** Writes [files] (target path -> bytes, already under "system/csc/" or "system/T9DB/") into [root]; returns how many were written. */
     fun apply(root: File, files: Map<String, ByteArray>): Int {
-        val base = File(root, "system/csc")
+        val bases = listOf(File(root, "system/csc"), File(root, "system/T9DB"))
         var written = 0
         for ((path, bytes) in files) {
             val f = File(root, path)
-            if (!f.canonicalPath.startsWith(base.canonicalPath + File.separator)) continue
+            if (bases.none { f.canonicalPath.startsWith(it.canonicalPath + File.separator) }) continue
             f.parentFile?.mkdirs()
             val tmp = File(f.parentFile, f.name + ".aemu-tmp")
             tmp.writeBytes(bytes)
@@ -41,8 +41,10 @@ internal object CscImport {
             f.setReadable(true, false)
             written++
         }
-        var d: File? = base
-        while (d != null && d != root) { d.setReadable(true, false); d.setExecutable(true, false); d = d.parentFile }
+        for (base in bases) {
+            var d: File? = base.takeIf { it.isDirectory }
+            while (d != null && d != root) { d.setReadable(true, false); d.setExecutable(true, false); d = d.parentFile }
+        }
         return written
     }
 

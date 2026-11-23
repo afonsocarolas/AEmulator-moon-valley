@@ -89,6 +89,8 @@ class Importer(
     private var gotVendor = false
     /** a Samsung CSC package found in the firmware, kept aside until build.prop shows whether this is Samsung firmware */
     private var pendingCsc: File? = null
+    /** Moon Valley, 2026-11-23: the cache partition of an old Samsung package; the CSC may be in there (see [CscPackage]) */
+    private var pendingCscCache: File? = null
     /** The system partition held the whole root file system (Android 7+ A/B "system-as-root": init, init*.rc, sepolicy, sbin/ at its top). */
     private var systemAsRoot = false
     /** boot image whose ramdisk is only the recovery ramdisk (A/B devices keep recovery in boot); used only if the system partition is not system-as-root. */
@@ -448,19 +450,31 @@ class Importer(
         pendingCsc = spill(s, name)
     }
 
+    /** The same for cache.rfs, which counts only when no CSC package of its own was found. */
+    private fun takeCscCache(s: InputStream, name: String) {
+        if (pendingCsc != null || pendingCscCache != null) { drain(s); return }
+        pendingCscCache = spill(s, name)
+    }
+
     /** Installs the CSC package found in the firmware into /system/csc. Anything but Samsung firmware ignores it silently. */
     private fun applyPendingCsc() {
-        val f = pendingCsc ?: return
-        pendingCsc = null
-        if (!CscImport.isSamsung(root)) return
+        val packages = listOfNotNull(pendingCsc, pendingCscCache)
+        pendingCsc = null; pendingCscCache = null
+        if (packages.isEmpty() || !CscImport.isSamsung(root)) return
+        for (f in packages) if (installCsc(f)) return
+    }
+
+    private fun installCsc(f: File): Boolean {
         val scratch = File(tmp, "csc-${System.nanoTime()}").apply { mkdirs() }
         try {
             val csc = f.inputStream().use { CscPackage.read(it, f.name, scratch) }
             val n = CscImport.apply(root, csc)
-            log("csc: $n files from ${f.name} installed into /system/csc")
+            log("csc: $n files from ${f.name} installed into /system/csc" + if (csc.keys.any { it.startsWith("system/T9DB/") }) " and /system/T9DB (keyboard)" else "")
+            return true
         } catch (t: Throwable) {
             if (cancelled) throw t
             log("csc: skipped ${f.name} (${t.message ?: t.javaClass.simpleName})")
+            return false
         } finally { deleteTree(scratch) }
     }
 
@@ -895,6 +909,7 @@ class Importer(
                 isBootName(base, bare) -> bootEntries.add(n to e)
                 isRecoveryName(base, bare) && e.size < 64_000_000 -> zip.getInputStream(e).use { takeRecovery(it, base) }
                 CscPackage.isCscContainer(base) && e.size > 0 -> zip.getInputStream(e).use { takeCsc(it, base) }
+                CscPackage.isCacheImage(base) && e.size in 1..MAX_CACHE_IMAGE -> zip.getInputStream(e).use { takeCscCache(it, base) }
                 isOemName(base, bare) -> withEntrySource(zip, e) { importOem(it) }
                 isSystemImageName(base, bare) ->
                     withEntrySource(zip, e) { importImage(if (SparseSource.probe(it)) SparseSource(listOf(it)) else it, "system") }
@@ -2395,6 +2410,7 @@ class Importer(
                 }
                 n == "userdata" && e.isFile -> {}
                 CscPackage.isCscContainer(base) && e.isFile && e.size > 0 && !inSystemDump(n) -> takeCsc(tar.nonClosing(), base)
+                CscPackage.isCacheImage(base) && e.isFile && e.size in 1..MAX_CACHE_IMAGE && !inSystemDump(n) -> takeCscCache(tar.nonClosing(), base)
                 isOemName(base.replace(Regex("(?i)\\.lz4$"), ""), bare) && e.isFile && !inSystemDump(n) -> {
                     val t = spill(maybeLz4(tar, base), base)
                     try { FileChannel.open(t.toPath(), StandardOpenOption.READ).use { c -> importOem(ChannelSource(c)) } } finally { t.delete() }
@@ -3155,6 +3171,7 @@ class Importer(
     }
 
     companion object {
+        private const val MAX_CACHE_IMAGE = 256L shl 20
         private val SKIP_NESTED = Regex("(?i).*(gapps|supersu|magisk|busybox|xposed|twrp|modem|csc).*")
         /** Апплеты toolbox Android 2.2–6.0 (ссылка создаётся, только если апплет есть в бинарнике). */
         private val TOOLBOX_APPLETS = listOf(

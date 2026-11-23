@@ -105,4 +105,39 @@ class CscPackageTest {
         assertThrows(IllegalArgumentException::class.java) { CscPackage.read(ByteArrayInputStream(zip), "csc.zip", dir) }
         assertThrows(java.io.IOException::class.java) { CscPackage.read(ByteArrayInputStream(ByteArray(2000)), "csc.bin", dir) }
     }
+
+    // Moon Valley, 2026-11-23
+    @Test fun keyboardDataIsTakenAndNothingElseBesideIt() {
+        assertEquals("system/T9DB/qwerty_de.kdb", CscPackage.target("system/T9DB/qwerty_de.kdb"))
+        assertEquals("system/T9DB/Samsung_400_DEusUN_xt9.ldb", CscPackage.target("system/T9DB/Samsung_400_DEusUN_xt9.ldb"))
+        assertNull(CscPackage.target("system/T9DB/run.sh"))
+        assertNull(CscPackage.target("system/T9DB/../bin/a.kdb"))
+        assertNull(CscPackage.target("T9DB/qwerty_de.kdb"))
+    }
+
+    @Test fun cscInsideTheCachePartition() = fixture { dir ->
+        val cache = fat16(mapOf("sec_csc.zip" to cscZip()))
+        val fromImage = CscPackage.read(ByteArrayInputStream(cache), "cache.rfs", dir)
+        assertArrayEquals(sales, fromImage["system/csc/sales_code.dat"])
+        val tar = ByteArrayOutputStream().also { out -> TarArchiveOutputStream(out).use {
+            it.putArchiveEntry(TarArchiveEntry("factoryfs.rfs").apply { size = 1000 }); it.write(ByteArray(1000)); it.closeArchiveEntry()
+            it.putArchiveEntry(TarArchiveEntry("cache.rfs").apply { size = cache.size.toLong() }); it.write(cache); it.closeArchiveEntry()
+        } }.toByteArray()
+        assertArrayEquals(customer, CscPackage.read(ByteArrayInputStream(tar), "P1000_HOME.tar.md5", dir)["system/csc/customer.xml"])
+    }
+
+    /** With CSC_SAMPLE=<a real cache.rfs / tar.md5>: what is found in it. */
+    @Test fun realPackage() = fixture { dir ->
+        val f = System.getenv("CSC_SAMPLE")?.let { File(it) } ?: return@fixture
+        val r = f.inputStream().use { CscPackage.read(it, f.name, dir) }
+        println("csc sample: ${r.size} files, " + r.keys.groupBy { it.substringBeforeLast('/') }.mapValues { it.value.size })
+        assertTrue("system/csc/customer.xml" in r)
+    }
+
+    @Test fun theFirstGalaxyTab() {
+        for (m in listOf("GT-P1000", "GT-P1000L", "GT-P1010", "SCH-I800", "SGH-T849", "SHW-M180S")) assertTrue(m, Analyzer.isFirstGalaxyTab("Samsung", m, 10))
+        for (m in listOf("GT-P7300", "GT-I9000", "GT-P1", "SCH-I8000")) assertFalse(m, Analyzer.isFirstGalaxyTab("Samsung", m, 10))
+        assertFalse(Analyzer.isFirstGalaxyTab("Samsung", "GT-P1000", 19))
+        assertFalse(Analyzer.isFirstGalaxyTab("Htc", "GT-P1000", 10))
+    }
 }

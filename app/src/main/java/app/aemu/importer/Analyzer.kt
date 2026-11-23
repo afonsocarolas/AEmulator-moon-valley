@@ -113,6 +113,8 @@ class Analyzer(private val ctx: Context, private val paths: VmPaths, private val
         val density = all["ro.sf.lcd_density"]?.toIntOrNull() ?: 240
         val engine = Engine.forApi(api)
         val baseSettings = when {
+            // Moon Valley, 2026-11-23: the first Galaxy Tab's framework and launcher are laid out for its own screen only
+            isFirstGalaxyTab(brand, model, api) -> VmSettings(width = 600, height = 1024, density = 240, fbHz = 60, touchHz = 60)
             // the 2007 framework was built for 320x480 at 160 dpi and has no other layouts
             legacy -> VmSettings(width = 320, height = 480, density = 160, fbHz = 60, touchHz = 60)
             engine == Engine.GB || api < 14 -> VmSettings(width = 480, height = 800, density = 240, fbHz = 60, touchHz = 60)
@@ -167,6 +169,11 @@ class Analyzer(private val ctx: Context, private val paths: VmPaths, private val
     }
 
     companion object {
+        /** Moon Valley, 2026-11-23: the 7" Galaxy Tab of 2010 (Android 2.2 / 2.3, 600x1024 at 240 dpi) and its carrier and Wi-Fi versions. */
+        private val FIRST_GALAXY_TAB = Regex("(?i)(GT-P10(00|03|10|13)[A-Z]?|SCH-I800|SGH-T849|SGH-I987|SPH-P100|SC-01C|SHW-M180[A-Z]?)")
+        internal fun isFirstGalaxyTab(brand: String, model: String, api: Int) =
+            api in 8..10 && brand.equals("samsung", true) && FIRST_GALAXY_TAB.matches(model.trim())
+
         const val VERSION = 20   // 20: an x86-64 firmware is recognised (GuestArch.X86_64, translated on the native engine), images imported earlier as "ARM" are re-analysed once; 19: "Desktop" tag from ro.product.system.device=desktop; 18: ICS developer builds (sdk 13, codename IceCreamSandwich) are API 14; 17: guest architecture (GuestArch) detected from the ELF files
 
         /**

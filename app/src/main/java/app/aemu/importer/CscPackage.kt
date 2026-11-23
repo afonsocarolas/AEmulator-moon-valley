@@ -17,6 +17,9 @@ import org.apache.commons.compress.compressors.CompressorStreamFactory
  * Odin ships it as `GT-xxxx-CSC-<code>.tar.md5` holding `csc.rfs`, a small FAT volume with `csc.zip` inside; the
  * zip carries the files of the system/csc folder plus a few carrier apps and libraries. Only the data under system/csc is taken: the
  * carrier apps are bundled extras, and customer.xml may name an input method among them that would then be missing.
+ * Moon Valley, 2026-11-23: one-file packages (Galaxy Tab, Galaxy S 2.x) have no csc.rfs, their `cache.rfs` holds
+ * `recovery/sec_csc.zip` for the recovery to unpack; and the keyboard layouts and dictionaries of the Samsung keyboard
+ * (/system/T9DB) come only with the CSC, so they are taken too.
  * Content-first: a zip, a (compressed) tar, a FAT image, or any nesting of those is understood whatever its name.
  */
 internal object CscPackage {
@@ -33,10 +36,16 @@ internal object CscPackage {
     /** A package or image whose file name says CSC ("GT-I5500-CSC-SERJJ2.tar.md5", "csc.rfs", "CSC_SER.zip"). */
     fun isCscContainer(base: String) = CONTAINER_EXT.matches(base) && CSC_WORD.containsMatchIn(base)
 
+    /** The cache partition of an old Samsung package, which may carry the CSC (recovery/sec_csc.zip) or nothing at all. */
+    fun isCacheImage(base: String) = base.equals("cache.rfs", true)
+
+    private val KEYBOARD_DATA = Regex("""(?i)[A-Za-z0-9._+-]+[.](ldb|kdb)""")
+
     /** "system/csc/customer.xml", "csc/customer.xml" or a bare "customer.xml" -> "system/csc/customer.xml"; anything else null. */
     fun target(path: String): String? {
         val parts = path.replace('\\', '/').split('/').filter { it.isNotEmpty() && it != "." }
         if (parts.isEmpty() || parts.any { it == ".." || !SAFE_NAME.matches(it) }) return null
+        if (parts.size == 3 && parts[0].equals("system", true) && parts[1] == "T9DB" && KEYBOARD_DATA.matches(parts[2])) return "system/T9DB/" + parts[2]
         val i = parts.indexOfFirst { it.equals("csc", true) }
         val rest = when {
             i == 0 || (i == 1 && parts[0].equals("system", true)) -> parts.drop(i + 1)
@@ -126,6 +135,8 @@ internal object CscPackage {
                     val t = target(e.name)
                     if (t != null) sink.put(t, NoClose(tar))
                     else if (isCscContainer(base)) collect(NoClose(tar), base, scratch, depth + 1, sink)
+                    // (often an empty cache: whatever is wrong with it is no reason to drop the rest)
+                    else if (isCacheImage(base)) runCatching { collect(NoClose(tar), base, scratch, depth + 1, sink) }
                 }
             }
             return

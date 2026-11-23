@@ -5616,6 +5616,7 @@ class TreeFixer(
         keyguardSecureGuard()
         dropGnssHal()
         libRsUploadGuard()
+        sidewaysTouch()
         tungstenLedNodes()
         tungstenLedInitPatch()
         tungstenLedCountPatch()
@@ -5905,6 +5906,28 @@ class TreeFixer(
             }
         }
     }.onFailure { log("launcher: proximity guard failed: ${it.message}") }
+
+    /**
+     * Moon Valley, 2026-11-23. The first Galaxy Tab turns every touch by a quarter in its own input code, to match the panel
+     * rotation that is ignored here (GuestVm, ro.sf.hwrotation): see [SidewaysTouchPatch].
+     */
+    private fun sidewaysTouch() = runCatching {
+        if (img.api !in 9..10) return@runCatching
+        val turned = File(root, "system/build.prop").takeIf { it.isFile }?.readLines()
+            ?.any { it.trim().startsWith("ro.sf.hwrotation=") && it.substringAfter('=').trim().let { v -> v == "90" || v == "270" } } == true
+        val f = File(root, "system/lib/libandroid_servers.so")
+        if (!turned || !f.isFile || isLink(f)) return@runCatching
+        val d = f.readBytes()
+        when (SidewaysTouchPatch.apply(d)) {
+            SidewaysTouchPatch.PATCHED -> {
+                backupOnce(f, File(root, "system/.aemu-parked/system#lib#libandroid_servers.so"))
+                f.setWritable(true, true); f.writeBytes(d)
+                log("touch: the firmware's quarter turn for its sideways panel is removed")
+            }
+            SidewaysTouchPatch.ABSENT -> log("touch: sideways panel, but not the touch code this patch knows, left as is")
+            else -> {}
+        }
+    }.onFailure { log("touch: sideways panel patch failed: ${it.message}") }
 
     /**
      * Eclair/Froyo libRS: Allocation::uploadToTexture() aborts (null write, SIGSEGV) when glGenTextures() gives no id, i.e.
@@ -7000,7 +7023,9 @@ val db = settingsDb()
             dir.setExecutable(true, false)
         }
 
-        private val DBDATA_DIRS = listOf("dbdata", "dbdata/databases", "dbdata/system")
+        // (Moon Valley, 2026-11-23: db-journal is where the libsqlite of the first Galaxy Tab, RFS firmware, keeps the journal
+        // of every database, with the path's slashes as dots; without it no database can be written)
+        private val DBDATA_DIRS = listOf("dbdata", "dbdata/databases", "dbdata/system", "dbdata/db-journal")
 
         /**
          * Samsung 2.x keeps app databases and the account / sync registries on a separate /dbdata partition

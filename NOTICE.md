@@ -21,6 +21,12 @@ is unpacked before the first start (`core/SonyCodx.kt`, called from `TreeFixer.p
 (`native/sensorshal`, shipped as `engines/common/sensors.aemu_hall64.so`), the modes in the menu (`core/DualScreen.kt`,
 `ui/DualScreenUi.kt`).
 
+2026-11-23: the first Galaxy Tab (GT-P1000 and its versions, 2.2 / 2.3): a 600x1024 screen after import
+(`importer/Analyzer.kt`); the CSC inside `cache.rfs` and the Samsung keyboard's data (/system/T9DB) are imported
+(`importer/CscPackage.kt`, `core/CscImport.kt`, `importer/Importer.kt`); /dbdata/db-journal, where its SQLite
+keeps the journals, is created at every start (`core/TreeFixer.kt`); the quarter turn in its touch code is removed
+(`core/SidewaysTouchPatch.kt`).
+
 ---
 
 # AEmulator Plus modification notice
