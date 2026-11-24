@@ -28,7 +28,9 @@ keeps the journals, is created at every start (`core/TreeFixer.kt`); the quarter
 (`core/SidewaysTouchPatch.kt`).
 
 2026-11-24: with the GPU on, a guest that draws into the framebuffer (Android 1.0-1.5) is shown instead of the empty GPU
-surface (`core/ScreenSide.kt`, `core/GuestVm.kt`, `ui/VmActivity.kt`).
+surface (`core/ScreenSide.kt`, `core/GuestVm.kt`, `ui/VmActivity.kt`). Firmware that switches GPU composition off in
+build.prop (Samsung Galaxy 5) gets it switched on while the GPU is on (`core/SoftwareComposition.kt`, `core/GuestVm.kt`),
+and its own 240x320 screen after import (`importer/Analyzer.kt`).
 
 ---
 

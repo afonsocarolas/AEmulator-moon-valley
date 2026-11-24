@@ -904,6 +904,14 @@ class GuestVm(val ctx: Context, val img: GuestImage, val lowPowerBoot: Boolean =
                 log("MIUI/HyperOS: background blur off and the Rust runtime not used (${hy.size} properties pinned), SystemUI and the launcher start through zygote")
             }
         }
+        // Moon Valley, 2026-11-24: firmware that wants software composition, which the bridge does not have
+        SoftwareComposition.overrides(img.api, s.gpu && engine != Engine.N64) { CdmaMode.firmwareProp(paths, it) }.let { hw ->
+            if (hw.isNotEmpty()) {
+                overrides.putAll(hw)
+                props.pinned = props.pinned + hw.keys
+                log("GPU: the firmware asks for software composition (${hw.keys.joinToString()}=0), set to 1 for the GPU bridge")
+            }
+        }
         // PBO для текстур шрифтов (hwui 4.4+ на GLES3) ломают часть драйверов (Mali) — грузим текстуры напрямую
         if (HostInfo.gpu().contains("mali")) overrides["ro.hwui.use_gpu_pixel_buffers"] = "false"
         if (img.api in 19..20 && !isLpw39) overrides["persist.sys.dalvik.vm.lib"] = "libdvm.so"
