@@ -27,6 +27,9 @@ is unpacked before the first start (`core/SonyCodx.kt`, called from `TreeFixer.p
 keeps the journals, is created at every start (`core/TreeFixer.kt`); the quarter turn in its touch code is removed
 (`core/SidewaysTouchPatch.kt`).
 
+2026-11-24: with the GPU on, a guest that draws into the framebuffer (Android 1.0-1.5) is shown instead of the empty GPU
+surface (`core/ScreenSide.kt`, `core/GuestVm.kt`, `ui/VmActivity.kt`).
+
 ---
 
 # AEmulator Plus modification notice

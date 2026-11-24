@@ -1701,7 +1701,18 @@ class GuestVm(val ctx: Context, val img: GuestImage, val lowPowerBoot: Boolean =
         }
     }
 
+    // Moon Valley, 2026-11-24: which side the guest draws on, see ScreenSide
+    @Volatile private var glBase = 0L
+    private val fbActivity by lazy { FbActivity(paths.fb, settings.width.toLong() * settings.height * 2) }
+    /** the in-app bridge has put a frame on the surface since this start of the machine */
+    val bridgeDrew: Boolean get() = glInApp && GlBridge.frames() != glBase
+    /** fb0 has been drawn on since this start (or since [fbRebase]); reads the file, so not for the main thread */
+    fun fbDrew(): Boolean = fbActivity.drew()
+    fun fbRebase() = fbActivity.reset()
+
     private fun glUp() {
+        glBase = if (glInApp) GlBridge.frames() else 0L
+        fbActivity.reset()
         if (!settings.gpu) { log("GPU bridge off, software rendering"); return }
         val (w, h) = if (engine == Engine.GB) 480 to 800 else settings.width to settings.height
         paths.glSock.parentFile?.mkdirs()

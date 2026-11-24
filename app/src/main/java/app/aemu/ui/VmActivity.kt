@@ -176,7 +176,9 @@ import app.aemu.core.SplitLayout
 import app.aemu.core.TabRegistry
 import app.aemu.core.VmSlots
 import app.aemu.core.Keeper
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlin.concurrent.thread
 import app.aemu.core.DisplayGeometry
 import androidx.compose.runtime.DisposableEffect
@@ -425,6 +427,7 @@ open class VmActivity : ComponentActivity() {
         if (direct) { surfaceView.holder.setFixedSize(gw, gh); guest.direct = { app.aemu.core.GlHost.presented() } }
         surfaceView.visibility = if (useBridge || direct) View.VISIBLE else View.GONE
         guest.passthrough = useBridge
+        bridgeScreen = useBridge
         VmHost.screen = VmHost.ScreenSource(gw, gh, { px -> grabFrame(px) }, { guest.passthrough })
         box.addView(surfaceView, FrameLayout.LayoutParams(-1, -1))
         box.addView(guest, FrameLayout.LayoutParams(-1, -1))
@@ -1145,6 +1148,8 @@ open class VmActivity : ComponentActivity() {
 
     // Moon Valley, 2026-11-23: a two-screen phone (see core/DualScreen)
     private var dualFirmware by mutableStateOf(false)
+    /** Moon Valley, 2026-11-24: the window shows the GPU bridge's surface, unless the guest draws into fb0 (see core/ScreenSide) */
+    private var bridgeScreen = false
     /** this start of the machine has both panels, side by side on one screen */
     private var dualOn by mutableStateOf(false)
     private var dualMode by mutableStateOf(app.aemu.core.DualScreen.SINGLE)
@@ -1533,18 +1538,31 @@ open class VmActivity : ComponentActivity() {
         LaunchedEffect(vm) { while (true) { romNote = vm.pendingNote; delay(500) } }
         // Samsung 2.x boot animation: playlogos1 writes straight into fb0, which the GL-surface mode never shows
         LaunchedEffect(vm) {
-            var onFb = false
+            // Moon Valley, 2026-11-24: and 1.0-1.5 (or a firmware whose drivers are not the bridge's) always draws there
+            var side = app.aemu.core.ScreenSide.Side.SURFACE
             while (true) {
-                val want = vm.legacyLogoRunning()
-                if (want != onFb && (guest.passthrough || onFb)) {
-                    onFb = want
-                    if (want) { if (!guest.autoPages) guest.pages = 2; guest.format = vm.logoFormat }
-                    guest.passthrough = !want; guest.poke()
+                if (bridgeScreen) {
+                    val logo = vm.legacyLogoRunning()
+                    val was = side
+                    val now = withContext(Dispatchers.IO) {
+                        // (the logo's own last picture is not the system's)
+                        if (was == app.aemu.core.ScreenSide.Side.LOGO && !logo) vm.fbRebase()
+                        app.aemu.core.ScreenSide.pick(logo, vm.bridgeDrew) { vm.fbDrew() }
+                    }
+                    if (now != side) {
+                        side = now
+                        when (now) {
+                            app.aemu.core.ScreenSide.Side.LOGO -> { if (!guest.autoPages) guest.pages = 2; guest.format = vm.logoFormat }
+                            app.aemu.core.ScreenSide.Side.FB -> { if (!guest.autoPages) guest.pages = 1; guest.format = 0; vm.log("screen: the guest draws into fb0, not through the GPU bridge") }
+                            else -> {}
+                        }
+                        guest.passthrough = now == app.aemu.core.ScreenSide.Side.SURFACE; guest.poke()
+                    }
                 }
                 delay(200)
             }
         }
-        LaunchedEffect(Unit) { while (true) { if (vm.recoveryMode) guest.format = vm.recoveryFormat else if (vm.engine == app.aemu.core.Engine.N64) guest.format = 1; seconds = vm.bootSeconds(); frames = if (vm.glInApp) dev.lk.m7sense.GlBridge.frames() else guest.rings; delay(500) } }
+        LaunchedEffect(Unit) { while (true) { if (vm.recoveryMode) guest.format = vm.recoveryFormat else if (vm.engine == app.aemu.core.Engine.N64) guest.format = 1; seconds = vm.bootSeconds(); frames = if (vm.glInApp && bridgeScreen && !guest.passthrough) guest.shown else if (vm.glInApp) dev.lk.m7sense.GlBridge.frames() else guest.rings; delay(500) } }
         // как только гость начал рисовать — карточку убираем, остаётся маленький индикатор
         val drawing = frames > 30
         // null = automatic (card hides once the guest draws); true/false = the person minimized or restored it
