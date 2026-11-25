@@ -1197,6 +1197,7 @@ class GuestVm(val ctx: Context, val img: GuestImage, val lowPowerBoot: Boolean =
         if (File(paths.root, "system/lib/libappkey_jni.so").isFile) input.multiPerPid = true
         // 64-bit firmware on the native engine reads 24-byte events; a 32-bit-only one (qemu-arm) reads 16-byte ones
         input.wide = InputService.wideFor(engine, isPure32Tree(paths.root))
+        input.gamepad = XperiaPad.supported(paths.root, img.api, img.arch == GuestArch.ARM, engine) && !recoveryMode && !nativeUi
         input.serve()
         if (engine != Engine.N64) vibration.serve()   // 64-bit guests get vibration through Sensors
         motion.serve()

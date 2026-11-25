@@ -38,6 +38,10 @@ emulated modem speaks the RIL of Sony Ericsson's 2.3 (`core/SemcRil.kt`, `core/S
 slide-out keypad are not started (`core/InitPlan.kt`), and its system process may open the touch screen twice
 (`core/GuestVm.kt`, `core/InputService.kt`).
 
+2026-11-25: the Xperia Play's slide-out gamepad, on the screen or with a real controller: the guest shim answers for the
+phone's two keypads and its slider (`native/guestshim/vinput.h`, libaemushim.so rebuilt; `core/XperiaPad.kt`,
+`core/InputService.kt`, `core/GuestVm.kt`, `ui/GamepadOverlay.kt`, `ui/VmActivity.kt`, `res/values/strings_moon.xml`).
+
 ---
 
 # AEmulator Plus modification notice

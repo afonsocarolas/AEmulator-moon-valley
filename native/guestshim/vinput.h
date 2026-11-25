@@ -6,7 +6,12 @@
  *
  * Modified for AEmulator Moon Valley, 2026-11-19: a third device, the YotaPhone 2 back screen's touch panel. Its kernel
  * driver names it "bs_virtual_ts", and the firmware's /system/usr/idc/bs_virtual_ts.idc ("touch.display = EPD") makes
- * Yota's InputReader send its touches to the e-ink display (display 2). The app makes the node only for such a firmware. */
+ * Yota's InputReader send its touches to the e-ink display (display 2). The app makes the node only for such a firmware.
+ *
+ * Modified for AEmulator Moon Valley, 2026-11-25: two more, the gamepad of the Sony Ericsson Xperia Play (board "zeus").
+ * They carry the names of the phone's own keypads, so its keypad-zeus.kl / keypad-game-zeus.kl map the keys; the first
+ * also has the slider (SW_LID, 0 = open), whose state the app keeps in a file. The app makes the nodes only for such a
+ * firmware; the keys are the ones of core/XperiaPad.kt. */
 #ifndef VINPUT_H
 #define VINPUT_H
 
@@ -16,10 +21,17 @@
 #define VI_KBD_SOCKET "/dev/aemu_keyboard"
 #define VI_EPD_NODE "/dev/input/aemu-epdtouch"
 #define VI_EPD_SOCKET "/dev/aemu_epdtouch"
+#define VI_ZEUS_NODE "/dev/input/aemu-zeus"
+#define VI_ZEUS_SOCKET "/dev/aemu_zeus"
+#define VI_ZGAME_NODE "/dev/input/aemu-zeusgame"
+#define VI_ZGAME_SOCKET "/dev/aemu_zeusgame"
+#define VI_LID_FILE "/dev/aemu_lid"
 #define VI_NONE 0
 #define VI_PAD 1
 #define VI_KBD 2
 #define VI_EPD 3
+#define VI_ZEUS 4
+#define VI_ZGAME 5
 #define VI_PAD_MAX 4095
 
 struct vi_sockaddr { unsigned short family; char path[108]; };
@@ -52,6 +64,8 @@ static const char *vi_socket_of(const char *path) {
     if (vi_equal(path, VI_PAD_NODE)) return VI_PAD_SOCKET;
     if (vi_equal(path, VI_KBD_NODE)) return VI_KBD_SOCKET;
     if (vi_equal(path, VI_EPD_NODE)) return VI_EPD_SOCKET;
+    if (vi_equal(path, VI_ZEUS_NODE)) return VI_ZEUS_SOCKET;
+    if (vi_equal(path, VI_ZGAME_NODE)) return VI_ZGAME_SOCKET;
     return 0;
 }
 
@@ -81,8 +95,9 @@ static int vinput_fd(int fd) {
     if (vi_getpeername(fd, &addr, &len) < 0 || addr.family != 1) return VI_NONE;
     unsigned n = 0;
     while (n < sizeof(addr.path) && addr.path[n]) n++;
-    for (int kind = VI_PAD; kind <= VI_EPD; kind++) {
-        const char *suffix = kind == VI_PAD ? VI_PAD_SOCKET : kind == VI_KBD ? VI_KBD_SOCKET : VI_EPD_SOCKET;
+    for (int kind = VI_PAD; kind <= VI_ZGAME; kind++) {
+        const char *suffix = kind == VI_PAD ? VI_PAD_SOCKET : kind == VI_KBD ? VI_KBD_SOCKET : kind == VI_EPD ? VI_EPD_SOCKET
+                           : kind == VI_ZEUS ? VI_ZEUS_SOCKET : VI_ZGAME_SOCKET;
         unsigned sl = 0;
         while (suffix[sl]) sl++;
         if (n < sl) continue;
@@ -97,6 +112,20 @@ static void vi_bit(unsigned char *buf, unsigned len, unsigned bit) {
     if (bit / 8 < len) buf[bit / 8] |= 1u << (bit % 8);
 }
 
+/* Xperia Play: the keys of the phone's two keypads */
+static const unsigned short vi_zeus_keys[] = { 103, 105, 106, 108, 308, 305, 304, 307, 310, 311, 226, 139, 102, 158, 217, 0 };
+static const unsigned short vi_zgame_keys[] = { 115, 114, 314, 28, 0 };
+
+/* Xperia Play: is the gamepad slid out (the app writes "1" or "0") */
+static int vi_lid_open(void) {
+    char c = '0';
+    long fd = sys3(5 /* open */, (long)VI_LID_FILE, 0, 0);
+    if (fd < 0) return 0;
+    long n = sys3(3 /* read */, fd, (long)&c, 1);
+    sys3(6 /* close */, fd, 0, 0);
+    return n == 1 && c == '1';
+}
+
 static int vinput_ioctl(int kind, unsigned req, void *arg) {
     unsigned nr = req & 255, len = (req >> 16) & 0x3fff;
     unsigned char *b = arg;
@@ -106,13 +135,15 @@ static int vinput_ioctl(int kind, unsigned req, void *arg) {
     if (nr == 1 /* EVIOCGVERSION */ && len == 4) { *(unsigned *)b = 0x10001; return 0; }
     if (nr == 2 /* EVIOCGID */ && len == 8) {
         unsigned short *id = arg;
-        id[0] = 6 /* BUS_VIRTUAL */; id[1] = 0; id[2] = (unsigned short)(kind == VI_PAD ? 2 : kind == VI_KBD ? 3 : 4); id[3] = 1;
+        id[0] = 6 /* BUS_VIRTUAL */; id[1] = 0; id[2] = (unsigned short)(kind == VI_PAD ? 2 : kind == VI_KBD ? 3 : kind == VI_EPD ? 4 : kind == VI_ZEUS ? 5 : 6); id[3] = 1;
         return 0;
     }
     if (nr >= 6 && nr <= 8) { /* name, physical path, unique ID */
         const char *s = kind == VI_PAD ? (nr == 6 ? "AEmulator Touchpad" : nr == 7 ? "aemu/touchpad" : "aemu-touchpad")
                       : kind == VI_KBD ? (nr == 6 ? "AEmulator Keyboard" : nr == 7 ? "aemu/keyboard" : "aemu-keyboard")
-                                       : (nr == 6 ? "bs_virtual_ts" : nr == 7 ? "aemu/epdtouch" : "aemu-epdtouch");
+                      : kind == VI_EPD ? (nr == 6 ? "bs_virtual_ts" : nr == 7 ? "aemu/epdtouch" : "aemu-epdtouch")
+                      : kind == VI_ZEUS ? (nr == 6 ? "keypad-zeus" : nr == 7 ? "aemu/zeus" : "aemu-zeus")
+                                        : (nr == 6 ? "keypad-game-zeus" : nr == 7 ? "aemu/zeusgame" : "aemu-zeusgame");
         unsigned i = 0;
         if (!len) return 0;
         while (i + 1 < len && s[i]) { b[i] = s[i]; i++; }
@@ -127,10 +158,15 @@ static int vinput_ioctl(int kind, unsigned req, void *arg) {
         if (nr == 0x20) { /* EV bits */
             vi_bit(b, len, 0 /* EV_SYN */); vi_bit(b, len, 1 /* EV_KEY */);
             if (kind == VI_PAD || kind == VI_EPD) vi_bit(b, len, 3 /* EV_ABS */);
+            if (kind == VI_ZEUS) vi_bit(b, len, 5 /* EV_SW */);
         }
+        if (nr == 0x25 && kind == VI_ZEUS) vi_bit(b, len, 0 /* SW_LID */);
+        if (nr == 0x1b && kind == VI_ZEUS && !vi_lid_open()) vi_bit(b, len, 0 /* switch state: lid closed */);
         if (nr == 0x21) { /* KEY bits */
             if (kind == VI_KBD) { for (unsigned k = 1; k < 249; k++) vi_bit(b, len, k); }
             else if (kind == VI_EPD) vi_bit(b, len, 330 /* BTN_TOUCH */);
+            else if (kind == VI_ZEUS) { for (unsigned k = 0; vi_zeus_keys[k]; k++) vi_bit(b, len, vi_zeus_keys[k]); }
+            else if (kind == VI_ZGAME) { for (unsigned k = 0; vi_zgame_keys[k]; k++) vi_bit(b, len, vi_zgame_keys[k]); }
             else { vi_bit(b, len, 272 /* BTN_LEFT */); vi_bit(b, len, 273 /* BTN_RIGHT */); vi_bit(b, len, 330 /* BTN_TOUCH */); }
         }
         if (nr == 0x23 && (kind == VI_PAD || kind == VI_EPD)) { /* ABS bits: protocol A multi-touch */

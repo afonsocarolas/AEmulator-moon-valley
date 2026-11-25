@@ -60,6 +60,9 @@
     <string name="webplay_no_network">No Wi-Fi address found. Connect this phone to Wi-Fi (or turn on its hotspot) and try again.</string>
     <!-- Added 2026-11-21: VR mode on Meta Quest (the machine's screen in front of you under the Moon Valley sky) -->
     <string name="vr_menu">VR mode</string>
+    <string name="pad_open">Slide out the gamepad</string>
+    <string name="pad_close">Slide in the gamepad</string>
+    <string name="pad_turn">Turn your device to the left, like the real phone</string>
     <string name="vr_failed">VR mode could not start: %1$s</string>
     <string name="vr_no_machine">no machine is running</string>
     <string-array name="vr_hint">

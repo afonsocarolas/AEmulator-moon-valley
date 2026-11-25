@@ -174,6 +174,44 @@ class InputService(private val paths: VmPaths, private val log: (String) -> Unit
         if (bytes.isNotEmpty()) postTo(epdClients, bytes)
     }
 
+    // Moon Valley, 2026-11-25: the gamepad of the Xperia Play (see XperiaPad); [gamepad] is set before serve()
+    @Volatile var gamepad = false
+    private val zeusClients = CopyOnWriteArrayList<Client>()
+    private val zeusGameClients = CopyOnWriteArrayList<Client>()
+    private val zeusServer = deviceServer("dev/aemu_zeus", "gamepad", zeusClients)
+    private val zeusGameServer = deviceServer("dev/aemu_zeusgame", "gamepad (start, select)", zeusGameClients)
+    private val lidFile get() = java.io.File(paths.root, "dev/aemu_lid")
+    private val padHeld = java.util.EnumSet.noneOf(XperiaPad.Button::class.java)
+    @Volatile var slideOpen = false
+        private set
+
+    private fun serveGamepad() {
+        val nodes = listOf("aemu-zeus", "aemu-zeusgame").map { java.io.File(paths.root, "dev/input/$it") }
+        slideOpen = false; synchronized(this) { padHeld.clear() }
+        if (!gamepad) { nodes.forEach { it.delete() }; return }
+        for (n in nodes) { n.parentFile?.mkdirs(); if (!n.exists()) n.createNewFile() }
+        runCatching { lidFile.writeText("0"); lidFile.setReadable(true, false) }
+        zeusServer.start(log); zeusGameServer.start(log)
+        log("input: the Xperia Play's gamepad (keypad-zeus, keypad-game-zeus)")
+    }
+
+    @Synchronized
+    fun padButton(b: XperiaPad.Button, down: Boolean) {
+        if (!gamepad || (if (down) !padHeld.add(b) else !padHeld.remove(b))) return
+        postTo(if (b.game) zeusGameClients else zeusClients, XperiaPad.key(b, down, System.nanoTime()))
+    }
+
+    /** Slides the gamepad out or in: the state first, the guest reads it again when the event arrives. */
+    @Synchronized
+    fun slide(open: Boolean) {
+        if (!gamepad || open == slideOpen) return
+        if (!open) for (b in padHeld.toList()) padButton(b, false)
+        slideOpen = open
+        runCatching { lidFile.writeText(if (open) "1" else "0") }.onFailure { log("gamepad: ${it.message}") }
+        postTo(zeusClients, XperiaPad.slide(open, System.nanoTime()))
+        log("gamepad: ${if (open) "open" else "closed"} (guest readers ${zeusClients.size}/${zeusGameClients.size})")
+    }
+
     private fun writeIdc(name: String, text: String) = runCatching {
         java.io.File(paths.root, "system/usr/idc/$name.idc").apply {
             parentFile?.mkdirs()
@@ -239,6 +277,7 @@ class InputService(private val paths: VmPaths, private val log: (String) -> Unit
         writeTouchIdc()
         serveMouseKeyboard()
         serveEpdTouch()
+        serveGamepad()
         val ok = server.start(log)
         if (trackballEnabled) {
             // An emulator-owned node: no vendor library or original image is patched.
@@ -281,6 +320,9 @@ class InputService(private val paths: VmPaths, private val log: (String) -> Unit
         server.stop()
         trackballServer.stop()
         padServer.stop(); keyboardServer.stop()
+        zeusServer.stop(); zeusGameServer.stop()
+        (zeusClients + zeusGameClients).forEach { it.close() }
+        zeusClients.clear(); zeusGameClients.clear()
         (padClients + keyboardClients).forEach { it.close() }
         padClients.clear(); keyboardClients.clear()
         trackballClients.forEach { runCatching { it.out.close() } }

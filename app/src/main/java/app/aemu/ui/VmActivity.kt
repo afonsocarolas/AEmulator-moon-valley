@@ -704,6 +704,56 @@ open class VmActivity : ComponentActivity() {
         return true
     }
 
+    // Moon Valley, 2026-11-25: the Xperia Play's gamepad (see core/XperiaPad), on the screen or a real one
+    private var padOpen by mutableStateOf(false)
+    /** a real controller is in use: no buttons on the screen */
+    private var realPad by mutableStateOf(false)
+    private var stickHeld: Set<app.aemu.core.XperiaPad.Button> = emptySet()
+
+    private fun hasGamepad() = ::vm.isInitialized && vm.input.gamepad && !vm.recoveryMode
+
+    private fun slideGamepad(open: Boolean) {
+        vm.input.slide(open)
+        padOpen = open; realPad = false
+        // the guest turns its picture inside the window: on a tablet, which may turn its windows, this one stays upright
+        if (tablet && !overlayVariant) requestedOrientation = if (open) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        if (open) toast(getString(R.string.pad_turn))
+    }
+
+    private fun isPad(event: android.view.InputEvent): Boolean {
+        val s = event.device?.sources ?: 0
+        return s and android.view.InputDevice.SOURCE_GAMEPAD == android.view.InputDevice.SOURCE_GAMEPAD ||
+            s and android.view.InputDevice.SOURCE_JOYSTICK == android.view.InputDevice.SOURCE_JOYSTICK
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (hasGamepad()) app.aemu.core.XperiaPad.fromAndroid(event.keyCode, isPad(event))?.let { b ->
+            if (event.repeatCount == 0) {
+                if (event.action == KeyEvent.ACTION_DOWN) realPad = true
+                vm.input.padButton(b, event.action == KeyEvent.ACTION_DOWN)
+            }
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchGenericMotionEvent(event: android.view.MotionEvent): Boolean {
+        if (hasGamepad() && event.isFromSource(android.view.InputDevice.SOURCE_JOYSTICK) && event.action == android.view.MotionEvent.ACTION_MOVE) {
+            fun axis(a: Int) = event.getAxisValue(a)
+            val now = app.aemu.core.XperiaPad.directions(axis(android.view.MotionEvent.AXIS_HAT_X), axis(android.view.MotionEvent.AXIS_HAT_Y), 0.5f) +
+                app.aemu.core.XperiaPad.directions(axis(android.view.MotionEvent.AXIS_X), axis(android.view.MotionEvent.AXIS_Y), 0.5f)
+            if (now != stickHeld) {
+                for (b in stickHeld) if (b !in now) vm.input.padButton(b, false)
+                for (b in now) if (b !in stickHeld) vm.input.padButton(b, true)
+                if (now.isNotEmpty()) realPad = true
+                stickHeld = now
+            }
+            return true
+        }
+        return super.dispatchGenericMotionEvent(event)
+    }
+
     private fun recoveryKeys() = ::vm.isInitialized && vm.recoveryMode
 
     private fun map(k: Int): Int? = if (::vm.isInitialized && LegacyFirmware.isPreRelease(vm.img.release)) LegacyKeys.fromAndroid(k) else when (k) {
@@ -1609,6 +1659,9 @@ open class VmActivity : ComponentActivity() {
                 skinScreen = vmTheme.skinScreen.takeIf { vmTheme.isSkin },
                 name = vm.img.name, onDismiss = { phone3d = false },
             )
+            // Moon Valley, 2026-11-25: the Xperia Play's gamepad
+            LaunchedEffect(vm) { while (true) { if (padOpen != vm.input.slideOpen) padOpen = vm.input.slideOpen; delay(500) } }
+            if (padOpen && !realPad && !showLog && hasGamepad()) GamepadOverlay(turned = guest.h >= guest.w) { b, down -> vm.input.padButton(b, down) }
             // Moon Valley, 2026-11-19: the address of browser play
             webPlayUrl?.let { url -> if (webPlayShown) WebPlayDialog(url, onStop = { stopWebPlay() }, onDismiss = { webPlayShown = false }) }
 
@@ -1723,6 +1776,9 @@ open class VmActivity : ComponentActivity() {
                     DropdownMenuItem(text = { Text(stringResource(if (vncOn) R.string.m_vnc_stop else R.string.m_vnc)) },
                         leadingIcon = { Icon(Icons.Rounded.Cast, null) },
                         enabled = running || vncOn, onClick = { menu = false; toggleVnc() })
+                    if (vm.input.gamepad) DropdownMenuItem(text = { Text(stringResource(if (padOpen) R.string.pad_close else R.string.pad_open)) },
+                        leadingIcon = { Icon(Icons.Rounded.Gamepad, null) },
+                        enabled = running, onClick = { menu = false; slideGamepad(!padOpen) })
                     if (dualFirmware) DropdownMenuItem(text = { Text(stringResource(R.string.dual_title)) },
                         leadingIcon = { Icon(Icons.Rounded.AspectRatio, null) },
                         enabled = running, onClick = { menu = false; dualDialog = true })
