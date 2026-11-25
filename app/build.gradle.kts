@@ -58,8 +58,8 @@ android {
         // 28: гостевые бинарники запускаются из каталога данных приложения (W^X для targetSdk>=29)
         //noinspection ExpiredTargetSdkVersion
         targetSdk = 28
-        versionCode = 63
-        versionName = "0.0.0.3.41" // <AEmulator base>.<Moon Valley release>
+        versionCode = 64
+        versionName = "0.0.0.3.42" // <AEmulator base>.<Moon Valley release>
         ndk { abiFilters += listOf("arm64-v8a") }
         // Moon Valley, 2026-11-21: VR mode (src/main/cpp: OpenXR through the Khronos loader)
         externalNativeBuild { cmake { arguments += listOf("-DANDROID_STL=c++_shared") } }

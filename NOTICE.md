@@ -40,7 +40,8 @@ slide-out keypad are not started (`core/InitPlan.kt`), and its system process ma
 
 2026-11-25: the Xperia Play's slide-out gamepad, on the screen or with a real controller: the guest shim answers for the
 phone's two keypads and its slider (`native/guestshim/vinput.h`, libaemushim.so rebuilt; `core/XperiaPad.kt`,
-`core/InputService.kt`, `core/GuestVm.kt`, `ui/GamepadOverlay.kt`, `ui/VmActivity.kt`, `res/values/strings_moon.xml`).
+`core/InputService.kt`, `core/GuestVm.kt`, `ui/GamepadOverlay.kt`, `ui/VmActivity.kt`, `res/values/strings_moon.xml`). Its
+D-pad is not turned with the screen.
 
 ---
 

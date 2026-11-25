@@ -126,6 +126,13 @@ static int vi_lid_open(void) {
     return n == 1 && c == '1';
 }
 
+/* Xperia Play: Android 2.3 turns D-pad keys with the screen (rotateKeyCode), as the keypads of its time sat in the portrait
+ * frame. This pad is held upright whichever way the picture lies. Sony's KeyboardInputMapper::processKey asks at every key
+ * whether the device is a USB one (its physical location begins with "usb") and leaves those keys alone. openDevice asks for
+ * the location too, and would make a USB device an external keyboard; the switch bits are the last thing it reads, so the
+ * location is "usb..." only from then on. */
+static int vi_zeus_opened;
+
 static int vinput_ioctl(int kind, unsigned req, void *arg) {
     unsigned nr = req & 255, len = (req >> 16) & 0x3fff;
     unsigned char *b = arg;
@@ -142,7 +149,7 @@ static int vinput_ioctl(int kind, unsigned req, void *arg) {
         const char *s = kind == VI_PAD ? (nr == 6 ? "AEmulator Touchpad" : nr == 7 ? "aemu/touchpad" : "aemu-touchpad")
                       : kind == VI_KBD ? (nr == 6 ? "AEmulator Keyboard" : nr == 7 ? "aemu/keyboard" : "aemu-keyboard")
                       : kind == VI_EPD ? (nr == 6 ? "bs_virtual_ts" : nr == 7 ? "aemu/epdtouch" : "aemu-epdtouch")
-                      : kind == VI_ZEUS ? (nr == 6 ? "keypad-zeus" : nr == 7 ? "aemu/zeus" : "aemu-zeus")
+                      : kind == VI_ZEUS ? (nr == 6 ? "keypad-zeus" : nr == 7 ? (vi_zeus_opened ? "usb/zeus" : "aemu/zeus") : "aemu-zeus")
                                         : (nr == 6 ? "keypad-game-zeus" : nr == 7 ? "aemu/zeusgame" : "aemu-zeusgame");
         unsigned i = 0;
         if (!len) return 0;
@@ -160,7 +167,7 @@ static int vinput_ioctl(int kind, unsigned req, void *arg) {
             if (kind == VI_PAD || kind == VI_EPD) vi_bit(b, len, 3 /* EV_ABS */);
             if (kind == VI_ZEUS) vi_bit(b, len, 5 /* EV_SW */);
         }
-        if (nr == 0x25 && kind == VI_ZEUS) vi_bit(b, len, 0 /* SW_LID */);
+        if (nr == 0x25 && kind == VI_ZEUS) { vi_bit(b, len, 0 /* SW_LID */); vi_zeus_opened = 1; }
         if (nr == 0x1b && kind == VI_ZEUS && !vi_lid_open()) vi_bit(b, len, 0 /* switch state: lid closed */);
         if (nr == 0x21) { /* KEY bits */
             if (kind == VI_KBD) { for (unsigned k = 1; k < 249; k++) vi_bit(b, len, k); }
