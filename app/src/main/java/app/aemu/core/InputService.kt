@@ -51,7 +51,7 @@ class InputService(private val paths: VmPaths, private val log: (String) -> Unit
     @Volatile var legacyMouseButton = false
     /** False for a pre-1.0 build: it has no touch screen support, so touch() sends nothing to the guest. */
     @Volatile var touchEnabled = true
-    /** MMI/FTM: minui and the touch probe of one process each keep their own event0 descriptor, so one pid may own several clients. */
+    /** MMI/FTM: minui and the touch probe of one process each keep their own event0 descriptor, so one pid may own several clients (Sony Ericsson's system_server too, see GuestVm). */
     @Volatile var multiPerPid = false
     /**
      * Events for a guest whose input_event has a 16-byte timeval (24 bytes per event). That is the native arm64 engine

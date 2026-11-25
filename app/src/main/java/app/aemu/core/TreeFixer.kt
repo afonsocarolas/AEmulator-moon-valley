@@ -4588,6 +4588,8 @@ class TreeFixer(
             }
             // Eclair/Froyo: a never-drawn layer (the Launcher's all-apps RenderScript SurfaceView) is cleared to opaque black over the whole home screen
             if (img.api <= 8 && ElfPatch.skipUndrawnLayerClear(lib) > 0) log("libsurfaceflinger: a layer that was never drawn is no longer cleared to black")
+            // Moon Valley, 2026-11-25: 2.3: the screen-off animation would leave the screen off for good (Xperia Play: from the start on)
+            if (img.api in 9..10 && img.arch == GuestArch.ARM && ScreenOffAnimationPatch.apply(lib) > 0) log("libsurfaceflinger: the screen-off animation is skipped, nothing here would turn the screen on again")
         }
     }.onFailure { log("libsurfaceflinger: patch failed: ${it.message}") }
 

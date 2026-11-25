@@ -32,6 +32,12 @@ surface (`core/ScreenSide.kt`, `core/GuestVm.kt`, `ui/VmActivity.kt`). Firmware 
 build.prop (Samsung Galaxy 5) gets it switched on while the GPU is on (`core/SoftwareComposition.kt`, `core/GuestVm.kt`),
 and its own 240x320 screen after import (`importer/Analyzer.kt`).
 
+2026-11-25: Android 2.3: SurfaceFlinger's screen-off animation is skipped, nothing would turn the screen on again after it
+(Xperia Play: black from the start) (`core/ScreenOffAnimationPatch.kt`, `core/TreeFixer.kt`, `core/ElfPatch.kt`). The
+emulated modem speaks the RIL of Sony Ericsson's 2.3 (`core/SemcRil.kt`, `core/Stubs.kt`); the programs that watch its
+slide-out keypad are not started (`core/InitPlan.kt`), and its system process may open the touch screen twice
+(`core/GuestVm.kt`, `core/InputService.kt`).
+
 ---
 
 # AEmulator Plus modification notice

@@ -56,6 +56,9 @@ class RilStub(
             .getOrDefault(false)
     }
 
+    /** Moon Valley, 2026-11-25: Sony Ericsson's 2.3 parcels, see [SemcRil] */
+    private val semc: Boolean by lazy { SemcRil.uses(paths.root, api).also { if (it) log("radio: Sony Ericsson's 2.3 RIL") } }
+
     /** radio technology reported in the voice/data registration state (ServiceState.RIL_RADIO_TECHNOLOGY_*) */
     @Volatile var networkType: Int = NetworkType.sanitize(networkType, api, cdma, lteOnCdma)
         private set
@@ -95,7 +98,7 @@ class RilStub(
      * "Unrecognized RIL_RadioState: 10" (GT-I9300 4.0.4: com.android.phone restarted in a loop until the modem was
      * switched to "radio unavailable", so fake calls failed). Those builds take SIM_READY (4) as "on".
      */
-    private val radioOnState: Int get() = if (api < 14 || (samsung && api <= 15)) 4 else 10
+    private val radioOnState: Int get() = if (semc) SemcRil.RADIO_ON else if (api < 14 || (samsung && api <= 15)) 4 else 10
 
     @Volatile private var out: OutputStream? = null
     /** fake call: number and CallState (4 incoming, 0 active); null when idle */
@@ -291,7 +294,7 @@ class RilStub(
             RIL_REQUEST_SETUP_DATA_CALL -> if (up) 0 to dataCall(single = true) else E_GENERIC_FAILURE to ByteArray(0)
             RIL_REQUEST_DATA_CALL_LIST -> 0 to (if (up) dataCall(single = false) else noDataCalls())
             RIL_REQUEST_SIM_IO -> if (!present) E_GENERIC_FAILURE to ByteArray(0)
-                else LegacySimIo.handle(args, simFiles).let { 0 to (le(it.sw1) + le(it.sw2) + str(it.hex)) }
+                else LegacySimIo.handle(if (semc) SemcRil.simIo(args) else args, simFiles).let { 0 to (le(it.sw1) + le(it.sw2) + str(it.hex)) }
             RIL_REQUEST_GET_IMEI -> 0 to str(imei)
             RIL_REQUEST_GET_IMEISV -> 0 to str(IMEISV)
             RIL_REQUEST_BASEBAND_VERSION -> 0 to str(baseband)
@@ -392,6 +395,7 @@ class RilStub(
     private fun simStatus(): ByteArray {
         // Cupcake RIL.responseSimStatus: one int, RIL_SIM_ABSENT 0 / NOT_READY 1 / READY 2 / PIN 3 / PUK 4 (no card-status struct)
         if (api <= 4) return ints(if (sim.present) 2 else 0)
+        if (semc) return SemcRil.simStatus(sim.present)
         val b = ByteArrayOutputStream()
         if (!sim.present) {                               // empty slot: "No SIM card"
             b.write(le(0)); b.write(le(0))                // CARDSTATE_ABSENT, universal PIN unknown

@@ -1192,6 +1192,9 @@ class GuestVm(val ctx: Context, val img: GuestImage, val lowPowerBoot: Boolean =
         input.trackballEnabled = settings.trackball
         input.mouseKeyboardEnabled = mouseKeyboardActive
         input.api = img.api
+        // Moon Valley, 2026-11-25: Sony Ericsson's AccessoryKeyDispatcher opens every input device in system_server once to read
+        // its name; that second connection must not evict the touch screen's own
+        if (File(paths.root, "system/lib/libappkey_jni.so").isFile) input.multiPerPid = true
         // 64-bit firmware on the native engine reads 24-byte events; a 32-bit-only one (qemu-arm) reads 16-byte ones
         input.wide = InputService.wideFor(engine, isPure32Tree(paths.root))
         input.serve()

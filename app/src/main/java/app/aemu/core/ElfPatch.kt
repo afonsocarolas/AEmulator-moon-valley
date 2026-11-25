@@ -883,7 +883,7 @@ object ElfPatch {
     }
 
     /** st_size of the dynamic function symbol [name], or null. */
-    private fun symbolSize(d: ByteArray, name: String): Int? {
+    internal fun symbolSize(d: ByteArray, name: String): Int? {
         if (d.size < 52 || d[0] != 0x7f.toByte() || d[4] != 1.toByte()) return null
         val b = ByteBuffer.wrap(d).order(ByteOrder.LITTLE_ENDIAN)
         val shoff = b.getInt(32); val shentsize = b.getShort(46).toInt() and 0xffff; val shnum = b.getShort(48).toInt() and 0xffff
