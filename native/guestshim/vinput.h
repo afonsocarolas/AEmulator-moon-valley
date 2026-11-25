@@ -11,7 +11,11 @@
  * Modified for AEmulator Moon Valley, 2026-11-25: two more, the gamepad of the Sony Ericsson Xperia Play (board "zeus").
  * They carry the names of the phone's own keypads, so its keypad-zeus.kl / keypad-game-zeus.kl map the keys; the first
  * also has the slider (SW_LID, 0 = open), whose state the app keeps in a file. The app makes the nodes only for such a
- * firmware; the keys are the ones of core/XperiaPad.kt. */
+ * firmware; the keys are the ones of core/XperiaPad.kt.
+ *
+ * Modified for AEmulator Moon Valley, 2026-11-25: the S Pen of Samsung's Galaxy Note devices, as their Wacom digitizer
+ * declares itself ("sec_e-pen"), with the switch that tells whether the pen is out of its slot. The app makes the node only
+ * for such a firmware and keeps the state, and which switch code the firmware uses, in a file (core/SPen.kt). */
 #ifndef VINPUT_H
 #define VINPUT_H
 
@@ -26,13 +30,19 @@
 #define VI_ZGAME_NODE "/dev/input/aemu-zeusgame"
 #define VI_ZGAME_SOCKET "/dev/aemu_zeusgame"
 #define VI_LID_FILE "/dev/aemu_lid"
+#define VI_PEN_NODE "/dev/input/aemu-spen"
+#define VI_PEN_SOCKET "/dev/aemu_spen"
+#define VI_PEN_FILE "/dev/aemu_spen_state"
 #define VI_NONE 0
 #define VI_PAD 1
 #define VI_KBD 2
 #define VI_EPD 3
 #define VI_ZEUS 4
 #define VI_ZGAME 5
+#define VI_PEN 6
 #define VI_PAD_MAX 4095
+#define VI_PEN_MAX 16383
+#define VI_PEN_PRESSURE 1023
 
 struct vi_sockaddr { unsigned short family; char path[108]; };
 
@@ -66,6 +76,7 @@ static const char *vi_socket_of(const char *path) {
     if (vi_equal(path, VI_EPD_NODE)) return VI_EPD_SOCKET;
     if (vi_equal(path, VI_ZEUS_NODE)) return VI_ZEUS_SOCKET;
     if (vi_equal(path, VI_ZGAME_NODE)) return VI_ZGAME_SOCKET;
+    if (vi_equal(path, VI_PEN_NODE)) return VI_PEN_SOCKET;
     return 0;
 }
 
@@ -95,9 +106,9 @@ static int vinput_fd(int fd) {
     if (vi_getpeername(fd, &addr, &len) < 0 || addr.family != 1) return VI_NONE;
     unsigned n = 0;
     while (n < sizeof(addr.path) && addr.path[n]) n++;
-    for (int kind = VI_PAD; kind <= VI_ZGAME; kind++) {
+    for (int kind = VI_PAD; kind <= VI_PEN; kind++) {
         const char *suffix = kind == VI_PAD ? VI_PAD_SOCKET : kind == VI_KBD ? VI_KBD_SOCKET : kind == VI_EPD ? VI_EPD_SOCKET
-                           : kind == VI_ZEUS ? VI_ZEUS_SOCKET : VI_ZGAME_SOCKET;
+                           : kind == VI_ZEUS ? VI_ZEUS_SOCKET : kind == VI_ZGAME ? VI_ZGAME_SOCKET : VI_PEN_SOCKET;
         unsigned sl = 0;
         while (suffix[sl]) sl++;
         if (n < sl) continue;
@@ -126,6 +137,18 @@ static int vi_lid_open(void) {
     return n == 1 && c == '1';
 }
 
+/* S Pen: the app's two characters, "0" in the slot / "1" out, and the switch codes (bit 0: 0x0e, bit 1: 0x13) */
+static void vi_pen_switch(unsigned char *buf, unsigned len, int only_if_out) {
+    char c[2] = { '0', '0' };
+    long fd = sys3(5 /* open */, (long)VI_PEN_FILE, 0, 0);
+    if (fd < 0) return;
+    long n = sys3(3 /* read */, fd, (long)c, 2);
+    sys3(6 /* close */, fd, 0, 0);
+    if (n != 2 || (only_if_out && c[0] != '1')) return;
+    if (c[1] & 1) vi_bit(buf, len, 0x0e);
+    if (c[1] & 2) vi_bit(buf, len, 0x13);
+}
+
 /* Xperia Play: Android 2.3 turns D-pad keys with the screen (rotateKeyCode), as the keypads of its time sat in the portrait
  * frame. This pad is held upright whichever way the picture lies. Sony's KeyboardInputMapper::processKey asks at every key
  * whether the device is a USB one (its physical location begins with "usb") and leaves those keys alone. openDevice asks for
@@ -142,7 +165,7 @@ static int vinput_ioctl(int kind, unsigned req, void *arg) {
     if (nr == 1 /* EVIOCGVERSION */ && len == 4) { *(unsigned *)b = 0x10001; return 0; }
     if (nr == 2 /* EVIOCGID */ && len == 8) {
         unsigned short *id = arg;
-        id[0] = 6 /* BUS_VIRTUAL */; id[1] = 0; id[2] = (unsigned short)(kind == VI_PAD ? 2 : kind == VI_KBD ? 3 : kind == VI_EPD ? 4 : kind == VI_ZEUS ? 5 : 6); id[3] = 1;
+        id[0] = 6 /* BUS_VIRTUAL */; id[1] = 0; id[2] = (unsigned short)(kind == VI_PAD ? 2 : kind == VI_KBD ? 3 : kind == VI_EPD ? 4 : kind == VI_ZEUS ? 5 : kind == VI_ZGAME ? 6 : 7); id[3] = 1;
         return 0;
     }
     if (nr >= 6 && nr <= 8) { /* name, physical path, unique ID */
@@ -150,7 +173,8 @@ static int vinput_ioctl(int kind, unsigned req, void *arg) {
                       : kind == VI_KBD ? (nr == 6 ? "AEmulator Keyboard" : nr == 7 ? "aemu/keyboard" : "aemu-keyboard")
                       : kind == VI_EPD ? (nr == 6 ? "bs_virtual_ts" : nr == 7 ? "aemu/epdtouch" : "aemu-epdtouch")
                       : kind == VI_ZEUS ? (nr == 6 ? "keypad-zeus" : nr == 7 ? (vi_zeus_opened ? "usb/zeus" : "aemu/zeus") : "aemu-zeus")
-                                        : (nr == 6 ? "keypad-game-zeus" : nr == 7 ? "aemu/zeusgame" : "aemu-zeusgame");
+                      : kind == VI_ZGAME ? (nr == 6 ? "keypad-game-zeus" : nr == 7 ? "aemu/zeusgame" : "aemu-zeusgame")
+                                        : (nr == 6 ? "sec_e-pen" : nr == 7 ? "aemu/spen" : "aemu-spen");
         unsigned i = 0;
         if (!len) return 0;
         while (i + 1 < len && s[i]) { b[i] = s[i]; i++; }
@@ -161,25 +185,42 @@ static int vinput_ioctl(int kind, unsigned req, void *arg) {
         (nr >= 0x20 && nr <= 0x3f)) {
         for (unsigned i = 0; i < len; i++) b[i] = 0;
         if (nr == 9 && kind == VI_PAD) vi_bit(b, len, 0 /* INPUT_PROP_POINTER */);
+        if (nr == 9 && kind == VI_PEN) vi_bit(b, len, 1 /* INPUT_PROP_DIRECT */);
         if (nr == 9 && kind == VI_EPD) vi_bit(b, len, 1 /* INPUT_PROP_DIRECT: a touch screen */);
         if (nr == 0x20) { /* EV bits */
             vi_bit(b, len, 0 /* EV_SYN */); vi_bit(b, len, 1 /* EV_KEY */);
-            if (kind == VI_PAD || kind == VI_EPD) vi_bit(b, len, 3 /* EV_ABS */);
-            if (kind == VI_ZEUS) vi_bit(b, len, 5 /* EV_SW */);
+            if (kind == VI_PAD || kind == VI_EPD || kind == VI_PEN) vi_bit(b, len, 3 /* EV_ABS */);
+            if (kind == VI_ZEUS || kind == VI_PEN) vi_bit(b, len, 5 /* EV_SW */);
         }
         if (nr == 0x25 && kind == VI_ZEUS) { vi_bit(b, len, 0 /* SW_LID */); vi_zeus_opened = 1; }
         if (nr == 0x1b && kind == VI_ZEUS && !vi_lid_open()) vi_bit(b, len, 0 /* switch state: lid closed */);
+        if (nr == 0x25 && kind == VI_PEN) vi_pen_switch(b, len, 0);
+        if (nr == 0x1b && kind == VI_PEN) vi_pen_switch(b, len, 1);
         if (nr == 0x21) { /* KEY bits */
             if (kind == VI_KBD) { for (unsigned k = 1; k < 249; k++) vi_bit(b, len, k); }
             else if (kind == VI_EPD) vi_bit(b, len, 330 /* BTN_TOUCH */);
             else if (kind == VI_ZEUS) { for (unsigned k = 0; vi_zeus_keys[k]; k++) vi_bit(b, len, vi_zeus_keys[k]); }
+            else if (kind == VI_PEN) { /* pen, rubber, touch, side button */
+                vi_bit(b, len, 320); vi_bit(b, len, 321); vi_bit(b, len, 330); vi_bit(b, len, 331);
+            }
             else if (kind == VI_ZGAME) { for (unsigned k = 0; vi_zgame_keys[k]; k++) vi_bit(b, len, vi_zgame_keys[k]); }
             else { vi_bit(b, len, 272 /* BTN_LEFT */); vi_bit(b, len, 273 /* BTN_RIGHT */); vi_bit(b, len, 330 /* BTN_TOUCH */); }
         }
         if (nr == 0x23 && (kind == VI_PAD || kind == VI_EPD)) { /* ABS bits: protocol A multi-touch */
             vi_bit(b, len, 48); vi_bit(b, len, 53); vi_bit(b, len, 54); vi_bit(b, len, 57); vi_bit(b, len, 58);
         }
+        if (nr == 0x23 && kind == VI_PEN) { vi_bit(b, len, 0); vi_bit(b, len, 1); vi_bit(b, len, 24 /* ABS_PRESSURE */); }
         return (int)len;
+    }
+    if (nr >= 0x40 && nr < 0x80 && kind == VI_PEN) {
+        int *a = arg;
+        unsigned axis = nr - 0x40, words = len / 4;
+        for (unsigned i = 0; i < words && i < 6; i++) a[i] = 0;
+        if (words < 3) return fail(-22 /* EINVAL */);
+        if (axis == 0 || axis == 1) a[2] = VI_PEN_MAX;
+        else if (axis == 24) a[2] = VI_PEN_PRESSURE;
+        else return fail(-22 /* EINVAL */);
+        return 0;
     }
     if (nr >= 0x40 && nr < 0x80 && (kind == VI_PAD || kind == VI_EPD)) { /* EVIOCGABS(axis): value, min, max, fuzz, flat[, resolution] */
         int *a = arg;

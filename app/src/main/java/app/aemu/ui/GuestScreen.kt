@@ -83,7 +83,7 @@ class GuestScreen(ctx: Context, val w: Int, val h: Int) : View(ctx) {
     private var quiet = 0
     @Volatile private var live = false
     private val gate = Object()
-    private companion object { const val POST_MAGIC = 0x31544f50; const val SETTLE_MS = 10L; const val SETTLE_MAX_MS = 50L; const val BUSY_MAX_MS = 400L; const val BLACK_HOLD_MS = 150L }
+    private companion object { const val POST_MAGIC = 0x31544f50; const val SETTLE_MS = 10L; const val SETTLE_MAX_MS = 50L; const val BUSY_MAX_MS = 400L; const val BLACK_HOLD_MS = 150L; const val PEN_LEAVES_MS = 80L }
     private val paint = Paint().apply { isFilterBitmap = true }
     private val dst = Rect()
 
@@ -297,6 +297,7 @@ class GuestScreen(ctx: Context, val w: Int, val h: Int) : View(ctx) {
             inp.padTouch(contacts)
             return true
         }
+        if (inp.spen && penTouch(inp, e)) return true
         val up = act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL
         val gone = if (act == MotionEvent.ACTION_POINTER_UP) e.actionIndex else -1
         // промежуточные точки движения — чтобы жесты и прокрутка были плавными
@@ -319,6 +320,82 @@ class GuestScreen(ctx: Context, val w: Int, val h: Int) : View(ctx) {
             pts.add(InputService.P(e.getPointerId(i), gx(e.getX(i)), gy(e.getY(i))))
         }
         inp.touch(pts, act != MotionEvent.ACTION_MOVE)
+        return true
+    }
+
+    // Moon Valley, 2026-11-25: the S Pen (see core/SPen): a real stylus, or a finger when [fingerPen] is on
+    @Volatile var fingerPen = false
+    /** the finger moves the pen above the screen instead of touching with it */
+    @Volatile var penHovers = false
+    @Volatile var penButton = false
+        set(v) { if (field == v) return; field = v; if (penFinger >= 0) penLast?.let { s -> penSend(s.copy(button = v)) } }
+    var onStylus: (() -> Unit)? = null
+    private var penLast: app.aemu.core.SPen.State? = null
+    private var penFinger = -1
+    // a pen that lifts stays above the screen for a moment; a stroke that follows needs no new arrival
+    private val penLeaves = Runnable { penLast = null; input?.pen(null) }
+
+    private fun penSend(s: app.aemu.core.SPen.State) {
+        removeCallbacks(penLeaves)
+        penLast = s
+        input?.pen(s)
+    }
+
+    private fun penState(x: Float, y: Float, pressure: Float, tip: Boolean, button: Boolean, eraser: Boolean) =
+        app.aemu.core.SPen.State((x / width).coerceIn(0f, 1f), (y / height).coerceIn(0f, 1f), pressure, tip, button, eraser)
+
+    private fun isPen(e: MotionEvent, i: Int) =
+        e.getToolType(i) == MotionEvent.TOOL_TYPE_STYLUS || e.getToolType(i) == MotionEvent.TOOL_TYPE_ERASER
+
+    private fun sideButton(e: MotionEvent) =
+        penButton || e.buttonState and (MotionEvent.BUTTON_STYLUS_PRIMARY or MotionEvent.BUTTON_SECONDARY) != 0
+
+    /** True when this touch is the pen's. */
+    private fun penTouch(inp: InputService, e: MotionEvent): Boolean {
+        val stylus = (0 until e.pointerCount).firstOrNull { isPen(e, it) }
+        if (stylus == null && !fingerPen) return penFinger >= 0 && run {
+            // switched off under a finger: let the pen go
+            penFinger = -1; penLeaves.run(); e.actionMasked != MotionEvent.ACTION_DOWN
+        }
+        if (stylus != null && e.actionMasked == MotionEvent.ACTION_DOWN) onStylus?.invoke()
+        val act = e.actionMasked
+        if (act == MotionEvent.ACTION_DOWN) penFinger = e.getPointerId(stylus ?: 0)
+        else if (stylus != null && penFinger != e.getPointerId(stylus) &&
+            act == MotionEvent.ACTION_POINTER_DOWN && e.actionIndex == stylus) { onStylus?.invoke(); penFinger = e.getPointerId(stylus) }
+        val i = if (penFinger >= 0) e.findPointerIndex(penFinger) else -1
+        if (i < 0) return true
+        val real = isPen(e, i)
+        val eraser = e.getToolType(i) == MotionEvent.TOOL_TYPE_ERASER
+        val tip = real || !penHovers
+        fun state(x: Float, y: Float, p: Float, down: Boolean) =
+            penState(x, y, if (!down) 0f else if (real) p else 0.5f, down, sideButton(e), eraser)
+        val lifted = act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL ||
+            (act == MotionEvent.ACTION_POINTER_UP && e.actionIndex == i)
+        val gap = if (inp.rateHz > 0) 1000L / inp.rateHz else 0L
+        var prevAt = 0L
+        for (h in 0 until e.historySize) {
+            val t = e.getHistoricalEventTime(h)
+            if (gap > 0 && prevAt != 0L && t - prevAt < gap) continue
+            prevAt = t
+            penSend(state(e.getHistoricalX(i, h), e.getHistoricalY(i, h), e.getHistoricalPressure(i, h), tip))
+        }
+        penSend(state(e.getX(i), e.getY(i), e.getPressure(i), tip && !lifted))
+        if (lifted) { penFinger = -1; postDelayed(penLeaves, PEN_LEAVES_MS) }
+        return true
+    }
+
+    /** A real stylus above the screen; [event] is the window's. True when it was over the picture. */
+    fun penHover(event: MotionEvent): Boolean {
+        val inp = input ?: return false
+        if (!inp.spen || width <= 0 || height <= 0 || !isPen(event, 0)) return false
+        val at = IntArray(2).also { getLocationInWindow(it) }
+        val x = event.x - at[0]; val y = event.y - at[1]
+        if (event.actionMasked == MotionEvent.ACTION_HOVER_EXIT || x < 0 || y < 0 || x >= width || y >= height) {
+            if (penLast != null) { removeCallbacks(penLeaves); postDelayed(penLeaves, PEN_LEAVES_MS) }
+            return false
+        }
+        onStylus?.invoke()
+        penSend(penState(x, y, 0f, false, sideButton(event), event.getToolType(0) == MotionEvent.TOOL_TYPE_ERASER))
         return true
     }
 

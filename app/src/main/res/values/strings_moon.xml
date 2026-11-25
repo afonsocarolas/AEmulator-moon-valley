@@ -79,4 +79,10 @@
     <string name="dual_mirror">Mirror: the same on both screens</string>
     <string name="dual_enable">Use both screens</string>
     <string name="dual_restart">Takes effect when the machine is started again.</string>
+    <!-- Added 2026-11-25: the S Pen of Samsung's Galaxy Notes -->
+    <string name="spen_take">Take out the S Pen</string>
+    <string name="spen_put">Put the S Pen back</string>
+    <string name="spen_finger">Finger is the pen</string>
+    <string name="spen_hover">Hold the pen above the screen</string>
+    <string name="spen_side">S Pen button</string>
 </resources>

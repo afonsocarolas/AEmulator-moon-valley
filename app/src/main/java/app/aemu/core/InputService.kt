@@ -212,6 +212,111 @@ class InputService(private val paths: VmPaths, private val log: (String) -> Unit
         log("gamepad: ${if (open) "open" else "closed"} (guest readers ${zeusClients.size}/${zeusGameClients.size})")
     }
 
+    // Moon Valley, 2026-11-25: the S Pen of the Galaxy Notes (see SPen); [spen] and [spenSwitches] are set before serve()
+    @Volatile var spen = false
+    /** the guest's programs load the shim, so the digitizer is a device of its own; otherwise the touch screen carries the pen */
+    @Volatile var spenDevice = false
+    @Volatile var spenSwitches: List<Int> = emptyList()
+    private val penClients = CopyOnWriteArrayList<Client>()
+    private val penServer = deviceServer("dev/aemu_spen", "S Pen", penClients)
+    private val penFile get() = java.io.File(paths.root, "dev/aemu_spen_state")
+    private val penDevice = SPen.Encoder()
+    @Volatile var penOut = false
+        private set
+    /** the pen is at the screen (touching it or above it): fingers are not reported, like on the real device */
+    @Volatile var penNear = false
+        private set
+    private var penOnTouch: SPen.State? = null
+
+    private fun servePen() {
+        val node = java.io.File(paths.root, "dev/input/aemu-spen")
+        penOut = false; penNear = false
+        synchronized(this) { penDevice.reset(); penOnTouch = null }
+        if (!spen) { node.delete(); return }
+        if (!spenDevice) { node.delete(); log("input: S Pen, through the touch screen"); return }
+        node.parentFile?.mkdirs()
+        if (!node.exists()) node.createNewFile()
+        writePenState()
+        // Samsung's own file is kept; without one Android 4 would take the digitizer for a touchpad
+        if (!java.io.File(paths.root, "system/usr/idc/sec_e-pen.idc").isFile)
+            writeIdc("sec_e-pen", "device.internal = 1\ntouch.deviceType = touchScreen\ntouch.orientationAware = 1\n")
+        penServer.start(log)
+        log("input: S Pen (sec_e-pen), slot switch ${spenSwitches.joinToString { "0x%x".format(it) }}")
+    }
+
+    private fun writePenState() = runCatching {
+        penFile.writeText(SPen.stateFile(penOut, spenSwitches)); penFile.setReadable(true, false)
+    }.onFailure { log("S Pen: ${it.message}") }
+
+    /** Takes the pen out of its slot or puts it back: the state first, the guest may read it again. */
+    @Synchronized
+    fun takePen(out: Boolean) {
+        if (!spen || out == penOut) return
+        if (!out) pen(null)
+        penOut = out
+        if (spenDevice) { writePenState(); postTo(penClients, SPen.slot(out, spenSwitches, System.nanoTime())) }
+        log("S Pen: ${if (out) "out" else "in its slot"} (guest readers ${penClients.size})")
+    }
+
+    /** The pen at the screen; null: it went away. */
+    @Synchronized
+    fun pen(s: SPen.State?) {
+        if (!spen) return
+        if (s != null && !penOut) takePen(true)
+        if (s != null && !penNear) touch(emptyList(), true)   // a finger that rests on the screen is let go
+        penNear = s != null
+        if (penClients.isEmpty() || (penOnTouch != null && s != null)) { penThroughTouch(s); return }
+        if (penOnTouch != null) penThroughTouch(null)
+        val bytes = penDevice.frame(s, System.nanoTime())
+        if (bytes.isNotEmpty()) postTo(penClients, bytes)
+    }
+
+    /** Engines without the shim: the touch screen's own contact, marked as a pen. Pressure 0 is a pen above the screen. */
+    private fun penThroughTouch(s: SPen.State?) {
+        val was = penOnTouch
+        if (s == null && was == null) return
+        penOnTouch = s
+        val w = screenW; val h = screenH
+        if (w <= 0 || h <= 0) return
+        val slots = mtMode == 5
+        if (mtMode == 4) { // single touch: a plain finger is all there is
+            send(if (s != null && s.tip) listOf(P(0, (s.x * (w - 1)).toInt(), (s.y * (h - 1)).toInt())) else emptyList())
+            return
+        }
+        val b = ByteBuffer.allocate(24 * EV).order(ByteOrder.LITTLE_ENDIAN)
+        val button = s?.button == true
+        if (button != (was?.button == true)) put(b, EV_KEY, SPen.BTN_STYLUS, if (button) 1 else 0)
+        if (s != null) {
+            if (slots) {
+                put(b, EV_ABS, ABS_MT_SLOT, 0)
+                if (slotTrackingId[0] < 0) {
+                    slotTrackingId[0] = nextTrackingId
+                    nextTrackingId = if (nextTrackingId >= 65535) 1 else nextTrackingId + 1
+                    put(b, EV_ABS, ABS_MT_TRACKING_ID, slotTrackingId[0])
+                }
+            } else if (mtMode == 0 || mtMode == 1) put(b, EV_ABS, ABS_MT_TRACKING_ID, 0)
+            put(b, EV_ABS, SPen.ABS_MT_TOOL_TYPE, SPen.MT_TOOL_PEN)
+            put(b, EV_ABS, ABS_MT_POSITION_X, (s.x * (w - 1)).toInt().coerceIn(0, w - 1))
+            put(b, EV_ABS, ABS_MT_POSITION_Y, (s.y * (h - 1)).toInt().coerceIn(0, h - 1))
+            put(b, EV_ABS, ABS_MT_TOUCH_MAJOR, if (s.tip) 8 else 0)
+            put(b, EV_ABS, ABS_MT_PRESSURE, if (s.tip) (s.pressure * 255).toInt().coerceIn(1, 255) else 0)
+        } else if (slots) {
+            put(b, EV_ABS, ABS_MT_SLOT, 0)
+            put(b, EV_ABS, SPen.ABS_MT_TOOL_TYPE, 0)
+            put(b, EV_ABS, ABS_MT_TRACKING_ID, -1)
+            slotTrackingId[0] = -1
+        }
+        val tip = s?.tip == true
+        if (tip != (was?.tip == true)) put(b, EV_KEY, BTN_TOUCH, if (tip) 1 else 0)
+        if (!slots) put(b, EV_SYN, SYN_MT_REPORT, 0)
+        put(b, EV_SYN, SYN_REPORT, 0)
+        flush(b)
+    }
+
+    /** the size of the touch screen, for [penThroughTouch] */
+    @Volatile var screenW = 0
+    @Volatile var screenH = 0
+
     private fun writeIdc(name: String, text: String) = runCatching {
         java.io.File(paths.root, "system/usr/idc/$name.idc").apply {
             parentFile?.mkdirs()
@@ -278,6 +383,7 @@ class InputService(private val paths: VmPaths, private val log: (String) -> Unit
         serveMouseKeyboard()
         serveEpdTouch()
         serveGamepad()
+        servePen()
         val ok = server.start(log)
         if (trackballEnabled) {
             // An emulator-owned node: no vendor library or original image is patched.
@@ -321,6 +427,7 @@ class InputService(private val paths: VmPaths, private val log: (String) -> Unit
         trackballServer.stop()
         padServer.stop(); keyboardServer.stop()
         zeusServer.stop(); zeusGameServer.stop()
+        penServer.stop(); penClients.forEach { it.close() }; penClients.clear()
         (zeusClients + zeusGameClients).forEach { it.close() }
         zeusClients.clear(); zeusGameClients.clear()
         (padClients + keyboardClients).forEach { it.close() }
@@ -333,7 +440,7 @@ class InputService(private val paths: VmPaths, private val log: (String) -> Unit
 
     @Synchronized
     fun touch(now: List<P>, force: Boolean = false) {
-        if (!touchEnabled) { pending = null; return }
+        if (!touchEnabled || (penNear && now.isNotEmpty())) { pending = null; return }
         // Real touch panels report only when a finger moves. A held finger (typing on the soft keyboard) used to
         // be re-sent as identical frames; 1.5/1.6 hand every one to the IME window and wait for it to finish the
         // event, so a slow IME (AxT9) fell behind and the whole screen stopped taking input.

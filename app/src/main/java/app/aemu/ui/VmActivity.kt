@@ -62,6 +62,7 @@ import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Lan
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.Gamepad
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.History
@@ -414,6 +415,7 @@ open class VmActivity : ComponentActivity() {
         }
         guest = GuestScreen(this, gw, gh).apply {
             input = vm.input
+            vm.input.screenW = gw; vm.input.screenH = gh
             fb = if (vm.recoveryMode) app.aemu.core.RecoveryImage.fb(vm.paths) else vm.paths.fb
             if (vm.recoveryMode || vm.nativeUi) pages = 2
             // Broadcom V3D firmware: SurfaceFlinger draws into whichever page of fb0 it panned to, not always the first
@@ -710,6 +712,20 @@ open class VmActivity : ComponentActivity() {
     private var realPad by mutableStateOf(false)
     private var stickHeld: Set<app.aemu.core.XperiaPad.Button> = emptySet()
 
+    // Moon Valley, 2026-11-25: the S Pen (see core/SPen)
+    private var penOut by mutableStateOf(false)
+    private var penFinger by mutableStateOf(false)
+    private var penHovers by mutableStateOf(false)
+    private var penSide by mutableStateOf(false)
+
+    private fun takePen(out: Boolean) {
+        vm.input.takePen(out)
+        penOut = out; penFinger = out; penHovers = false; penSide = false
+        penApply()
+    }
+
+    private fun penApply() { guest.fingerPen = penFinger; guest.penHovers = penHovers; guest.penButton = penSide }
+
     private fun hasGamepad() = ::vm.isInitialized && vm.input.gamepad && !vm.recoveryMode
 
     private fun slideGamepad(open: Boolean) {
@@ -751,6 +767,9 @@ open class VmActivity : ComponentActivity() {
             }
             return true
         }
+        if (::vm.isInitialized && vm.input.spen && event.isFromSource(android.view.InputDevice.SOURCE_CLASS_POINTER) &&
+            (event.actionMasked == android.view.MotionEvent.ACTION_HOVER_MOVE || event.actionMasked == android.view.MotionEvent.ACTION_HOVER_ENTER ||
+                event.actionMasked == android.view.MotionEvent.ACTION_HOVER_EXIT)) guest.penHover(event)
         return super.dispatchGenericMotionEvent(event)
     }
 
@@ -1662,6 +1681,16 @@ open class VmActivity : ComponentActivity() {
             // Moon Valley, 2026-11-25: the Xperia Play's gamepad
             LaunchedEffect(vm) { while (true) { if (padOpen != vm.input.slideOpen) padOpen = vm.input.slideOpen; delay(500) } }
             if (padOpen && !realPad && !showLog && hasGamepad()) GamepadOverlay(turned = guest.h >= guest.w) { b, down -> vm.input.padButton(b, down) }
+            // Moon Valley, 2026-11-25: the S Pen
+            LaunchedEffect(vm) {
+                guest.onStylus = { if (penFinger) { penFinger = false; penHovers = false; penApply() } }
+                while (true) { if (penOut != vm.input.penOut) { penOut = vm.input.penOut; if (!penOut) { penFinger = false; penHovers = false; penSide = false; penApply() } }; delay(500) }
+            }
+            if (penOut && vm.input.spen && !showLog) SPenBar(penFinger, penHovers, penSide,
+                onFinger = { penFinger = it; if (!it) penHovers = false; penApply() },
+                onHover = { penHovers = it; if (it) penFinger = true; penApply() },
+                onSide = { penSide = it; penApply() },
+                onPutBack = { takePen(false) })
             // Moon Valley, 2026-11-19: the address of browser play
             webPlayUrl?.let { url -> if (webPlayShown) WebPlayDialog(url, onStop = { stopWebPlay() }, onDismiss = { webPlayShown = false }) }
 
@@ -1779,6 +1808,9 @@ open class VmActivity : ComponentActivity() {
                     if (vm.input.gamepad) DropdownMenuItem(text = { Text(stringResource(if (padOpen) R.string.pad_close else R.string.pad_open)) },
                         leadingIcon = { Icon(Icons.Rounded.Gamepad, null) },
                         enabled = running, onClick = { menu = false; slideGamepad(!padOpen) })
+                    if (vm.input.spen) DropdownMenuItem(text = { Text(stringResource(if (penOut) R.string.spen_put else R.string.spen_take)) },
+                        leadingIcon = { Icon(Icons.Rounded.Draw, null) },
+                        enabled = running, onClick = { menu = false; takePen(!penOut) })
                     if (dualFirmware) DropdownMenuItem(text = { Text(stringResource(R.string.dual_title)) },
                         leadingIcon = { Icon(Icons.Rounded.AspectRatio, null) },
                         enabled = running, onClick = { menu = false; dualDialog = true })

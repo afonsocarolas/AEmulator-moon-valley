@@ -43,6 +43,11 @@ phone's two keypads and its slider (`native/guestshim/vinput.h`, libaemushim.so 
 `core/InputService.kt`, `core/GuestVm.kt`, `ui/GamepadOverlay.kt`, `ui/VmActivity.kt`, `res/values/strings_moon.xml`). Its
 D-pad is not turned with the screen.
 
+2026-11-25: the S Pen of Samsung's Galaxy Notes, with a real stylus or a finger: touch with pressure, hovering, the pen's
+button and the switch of its slot. The guest shim answers for Samsung's digitizer "sec_e-pen" (`native/guestshim/vinput.h`,
+libaemushim.so rebuilt); on the arm64 engine the touch screen reports the pen (`core/SPen.kt`, `core/InputService.kt`,
+`core/GuestVm.kt`, `ui/SPenBar.kt`, `ui/GuestScreen.kt`, `ui/VmActivity.kt`, `res/values/strings_moon.xml`).
+
 ---
 
 # AEmulator Plus modification notice
