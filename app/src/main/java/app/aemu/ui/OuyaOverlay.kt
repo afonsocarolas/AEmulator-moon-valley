@@ -25,6 +25,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -166,8 +170,42 @@ private fun DrawScope.drawFace(held: Set<Button>) {
     for ((b, dx, dy, col) in listOf(Quad(Button.Y, 0f, -1f, Y_YELLOW), Quad(Button.O, 0f, 1f, O_GREEN),
             Quad(Button.U, -1f, 0f, U_BLUE), Quad(Button.A, 1f, 0f, A_RED))) {
         val c = center + Offset(dx, dy) * (r * 0.62f)
-        drawCircle(PLATE.copy(alpha = if (b in held) 0.85f else 0.45f), r * 0.32f, c)
-        drawCircle(col.copy(alpha = if (b in held) 1f else 0.75f), r * 0.32f, c, style = Stroke(3.dp.toPx()))
+        val key = r * 0.32f
+        val on = b in held
+        // a dark button with a grey rim, the letter in its colour, as on the controller
+        drawCircle(Color(if (on) 0xff34373e else 0xff101114).copy(alpha = if (on) 0.95f else 0.8f), key, c)
+        drawCircle(Color(0xff8a8f98).copy(alpha = if (on) 0.9f else 0.55f), key, c, style = Stroke(1.5.dp.toPx()))
+        drawLetter(b, c, key * 0.5f, col.copy(alpha = if (on) 1f else 0.9f), maxOf(2.dp.toPx(), key * 0.12f))
+    }
+}
+
+/** The OUYA's letters: O a ring, U a cup, Y a cup on a stem, A an arch with a bar; [s] is half the letter's height. */
+private fun DrawScope.drawLetter(b: Button, c: Offset, s: Float, col: Color, w: Float) {
+    val line = Stroke(w, cap = StrokeCap.Round, join = StrokeJoin.Round)
+    val hw = s * 0.62f
+    when (b) {
+        Button.O -> drawCircle(col, s * 0.72f, c, style = line)
+        Button.U -> drawPath(Path().apply {
+            moveTo(c.x - hw, c.y - s * 0.75f); lineTo(c.x - hw, c.y + s * 0.1f)
+            arcTo(Rect(c.x - hw, c.y - s * 0.5f, c.x + hw, c.y + s * 0.72f), 180f, -180f, false)
+            lineTo(c.x + hw, c.y - s * 0.75f)
+        }, col, style = line)
+        Button.Y -> {
+            drawPath(Path().apply {
+                moveTo(c.x - hw, c.y - s * 0.8f); lineTo(c.x - hw, c.y - s * 0.45f)
+                arcTo(Rect(c.x - hw, c.y - s * 1.0f, c.x + hw, c.y + s * 0.1f), 180f, -180f, false)
+                lineTo(c.x + hw, c.y - s * 0.8f)
+            }, col, style = line)
+            drawLine(col, Offset(c.x, c.y + s * 0.1f), Offset(c.x, c.y + s * 0.8f), w, StrokeCap.Round)
+        }
+        else -> {
+            drawPath(Path().apply {
+                moveTo(c.x - hw, c.y + s * 0.75f); lineTo(c.x - hw, c.y - s * 0.05f)
+                arcTo(Rect(c.x - hw, c.y - s * 0.7f, c.x + hw, c.y + s * 0.6f), 180f, 180f, false)
+                lineTo(c.x + hw, c.y + s * 0.75f)
+            }, col, style = line)
+            drawLine(col, Offset(c.x - hw, c.y + s * 0.2f), Offset(c.x + hw, c.y + s * 0.2f), w, StrokeCap.Round)
+        }
     }
 }
 
