@@ -739,6 +739,12 @@ open class VmActivity : ComponentActivity() {
     private val PAD_FROM_SCREEN = 0
     private val PAD_FROM_STICK = 1
 
+    // Moon Valley, 2026-11-26: the OUYA's controller (see core/OuyaPad)
+    private var ouyaShown by mutableStateOf(true)
+    private var ouyaHat = 0 to 0
+
+    private fun hasOuya() = ::vm.isInitialized && vm.input.ouya && !vm.recoveryMode
+
     private fun hasGamepad() = ::vm.isInitialized && vm.input.gamepad && !vm.recoveryMode
 
     private fun slideGamepad(open: Boolean) {
@@ -757,6 +763,13 @@ open class VmActivity : ComponentActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (hasOuya() && isPad(event)) app.aemu.core.OuyaPad.nameOf(KeyEvent.keyCodeToString(event.keyCode))?.let { name ->
+            if (event.repeatCount == 0) {
+                if (event.action == KeyEvent.ACTION_DOWN) ouyaShown = false     // a real controller: no buttons on the screen
+                vm.input.ouyaKey(name, event.action == KeyEvent.ACTION_DOWN)
+            }
+            return true
+        }
         if (hasGamepad()) app.aemu.core.XperiaPad.fromAndroid(event.keyCode, isPad(event))?.let { b ->
             if (event.repeatCount == 0) {
                 if (event.action == KeyEvent.ACTION_DOWN) realPad = true
@@ -768,6 +781,25 @@ open class VmActivity : ComponentActivity() {
     }
 
     override fun dispatchGenericMotionEvent(event: android.view.MotionEvent): Boolean {
+        if (hasOuya() && event.isFromSource(android.view.InputDevice.SOURCE_JOYSTICK) && event.action == android.view.MotionEvent.ACTION_MOVE) {
+            fun axis(a: Int) = event.getAxisValue(a)
+            vm.input.ouyaAxis("X", axis(android.view.MotionEvent.AXIS_X)); vm.input.ouyaAxis("Y", axis(android.view.MotionEvent.AXIS_Y))
+            vm.input.ouyaAxis("Z", axis(android.view.MotionEvent.AXIS_Z)); vm.input.ouyaAxis("RZ", axis(android.view.MotionEvent.AXIS_RZ))
+            vm.input.ouyaAxis("LTRIGGER", maxOf(axis(android.view.MotionEvent.AXIS_LTRIGGER), axis(android.view.MotionEvent.AXIS_BRAKE)))
+            vm.input.ouyaAxis("RTRIGGER", maxOf(axis(android.view.MotionEvent.AXIS_RTRIGGER), axis(android.view.MotionEvent.AXIS_GAS)))
+            // the hat is the OUYA's D-pad, which is four buttons
+            val hat = Math.round(axis(android.view.MotionEvent.AXIS_HAT_X)) to Math.round(axis(android.view.MotionEvent.AXIS_HAT_Y))
+            if (hat != ouyaHat) {
+                fun dir(old: Int, new: Int, neg: String, pos: String) {
+                    if (old != new) { if (old < 0) vm.input.ouyaKey(neg, false); if (old > 0) vm.input.ouyaKey(pos, false)
+                        if (new < 0) vm.input.ouyaKey(neg, true); if (new > 0) vm.input.ouyaKey(pos, true) }
+                }
+                dir(ouyaHat.first, hat.first, "DPAD_LEFT", "DPAD_RIGHT"); dir(ouyaHat.second, hat.second, "DPAD_UP", "DPAD_DOWN")
+                ouyaHat = hat
+            }
+            ouyaShown = false
+            return true
+        }
         if (hasGamepad() && event.isFromSource(android.view.InputDevice.SOURCE_JOYSTICK) && event.action == android.view.MotionEvent.ACTION_MOVE) {
             fun axis(a: Int) = event.getAxisValue(a)
             val now = app.aemu.core.XperiaPad.directions(axis(android.view.MotionEvent.AXIS_HAT_X), axis(android.view.MotionEvent.AXIS_HAT_Y), 0.5f) +
@@ -1762,6 +1794,17 @@ open class VmActivity : ComponentActivity() {
                 onHover = { penHovers = it; if (it) penFinger = true; penApply() },
                 onSide = { penSide = it; penApply() },
                 onPutBack = { takePen(false) })
+            // Moon Valley, 2026-11-26: the OUYA's controller
+            if (ouyaShown && !showLog && hasOuya()) Box(Modifier.fillMaxSize()) {
+                val area = padArea
+                val d = androidx.compose.ui.platform.LocalDensity.current
+                Box(if (area == null) Modifier.fillMaxSize() else Modifier.offset { IntOffset(area.left, area.top) }
+                        .size(with(d) { area.width().toDp() }, with(d) { area.height().toDp() })) {
+                    OuyaOverlay(onButton = { b, down -> vm.input.ouyaKey(b.android, down) },
+                        onStick = { s, x, y -> if (s == 0) { vm.input.ouyaAxis("X", x); vm.input.ouyaAxis("Y", y) }
+                            else { vm.input.ouyaAxis("Z", x); vm.input.ouyaAxis("RZ", y) } })
+                }
+            }
             // Moon Valley, 2026-11-19: the address of browser play
             webPlayUrl?.let { url -> if (webPlayShown) WebPlayDialog(url, onStop = { stopWebPlay() }, onDismiss = { webPlayShown = false }) }
 
@@ -1881,6 +1924,9 @@ open class VmActivity : ComponentActivity() {
                     if (vm.input.gamepad) DropdownMenuItem(text = { Text(stringResource(if (padOpen) R.string.pad_close else R.string.pad_open)) },
                         leadingIcon = { Icon(Icons.Rounded.Gamepad, null) },
                         enabled = running, onClick = { menu = false; slideGamepad(!padOpen) })
+                    if (vm.input.ouya) DropdownMenuItem(text = { Text(stringResource(if (ouyaShown) R.string.ouya_hide else R.string.ouya_show)) },
+                        leadingIcon = { Icon(Icons.Rounded.Gamepad, null) },
+                        enabled = running, onClick = { menu = false; ouyaShown = !ouyaShown })
                     if (vm.input.spen) DropdownMenuItem(text = { Text(stringResource(if (penOut) R.string.spen_put else R.string.spen_take)) },
                         leadingIcon = { Icon(Icons.Rounded.Draw, null) },
                         enabled = running, onClick = { menu = false; takePen(!penOut) })

@@ -333,6 +333,52 @@ class InputService(private val paths: VmPaths, private val log: (String) -> Unit
     @Volatile var screenW = 0
     @Volatile var screenH = 0
 
+    // Moon Valley, 2026-11-26: the OUYA's controller (see OuyaPad); [ouya] is set before serve()
+    @Volatile var ouya = false
+    private var ouyaLayout = OuyaPad.Layout(emptyMap(), emptyMap())
+    private val ouyaClients = CopyOnWriteArrayList<Client>()
+    private val ouyaServer = deviceServer("dev/aemu_ouya", "OUYA controller", ouyaClients)
+    private val ouyaHeld = HashSet<Int>()
+    private val ouyaAxes = HashMap<Int, Int>()
+    val ouyaConnected: Int get() = ouyaClients.size
+
+    private fun serveOuya() {
+        val node = java.io.File(paths.root, "dev/input/aemu-ouya")
+        synchronized(this) { ouyaHeld.clear(); ouyaAxes.clear() }
+        if (!ouya) { node.delete(); return }
+        ouyaLayout = OuyaPad.layout(paths.root)
+        runCatching {
+            java.io.File(paths.root, "dev/aemu_ouya_keys").apply { writeBytes(OuyaPad.keyBitmap(ouyaLayout)); setReadable(true, false) }
+        }.onFailure { log("OUYA controller: ${it.message}") }
+        node.parentFile?.mkdirs()
+        if (!node.exists()) node.createNewFile()
+        ouyaServer.start(log)
+        log("input: OUYA Game Controller (${ouyaLayout.keys.size} keys, ${ouyaLayout.axes.size} axes in the firmware's layout)")
+    }
+
+    /** A button by its Android name (BUTTON_A, DPAD_UP, HOME...); false when the controller has no such key. */
+    @Synchronized
+    fun ouyaKey(name: String, down: Boolean): Boolean {
+        if (!ouya) return false
+        val code = ouyaLayout.key(name) ?: return false
+        if (if (down) !ouyaHeld.add(code) else !ouyaHeld.remove(code)) return true
+        postTo(ouyaClients, OuyaPad.Events(System.nanoTime()).apply { key(code, down) }.bytes())
+        return true
+    }
+
+    /** A stick or trigger by its Android axis name (X, Y, Z, RZ, LTRIGGER, RTRIGGER), -1..1 (a trigger 0..1). */
+    @Synchronized
+    fun ouyaAxis(name: String, value: Float): Boolean {
+        if (!ouya) return false
+        val (code, inverted) = ouyaLayout.axis(name) ?: return false
+        var raw = OuyaPad.raw(value, name == "LTRIGGER" || name == "RTRIGGER")
+        if (inverted) raw = -raw - 1
+        if (ouyaAxes[code] == raw) return true
+        ouyaAxes[code] = raw
+        postTo(ouyaClients, OuyaPad.Events(System.nanoTime()).apply { axis(code, raw) }.bytes())
+        return true
+    }
+
     private fun writeIdc(name: String, text: String) = runCatching {
         java.io.File(paths.root, "system/usr/idc/$name.idc").apply {
             parentFile?.mkdirs()
@@ -400,6 +446,7 @@ class InputService(private val paths: VmPaths, private val log: (String) -> Unit
         serveEpdTouch()
         serveGamepad()
         servePen()
+        serveOuya()
         val ok = server.start(log)
         if (trackballEnabled) {
             // An emulator-owned node: no vendor library or original image is patched.
@@ -444,6 +491,7 @@ class InputService(private val paths: VmPaths, private val log: (String) -> Unit
         padServer.stop(); keyboardServer.stop()
         zeusServer.stop(); zeusGameServer.stop(); zeusPadServer.stop()
         zeusPadClients.forEach { it.close() }; zeusPadClients.clear()
+        ouyaServer.stop(); ouyaClients.forEach { it.close() }; ouyaClients.clear()
         penServer.stop(); penClients.forEach { it.close() }; penClients.clear()
         (zeusClients + zeusGameClients).forEach { it.close() }
         zeusClients.clear(); zeusGameClients.clear()

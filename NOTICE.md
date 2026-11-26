@@ -59,6 +59,12 @@ to the app (`core/AppDataImport.kt`, `ui/VmActivity.kt`, `res/values/strings_moo
 video (YUV) buffers too; FIFA 10 on the Xperia Play stayed black waiting for its intro movie
 (`native/grallocwrap/gralloc_gb.c`, `build-gb.sh`, asset `engines/kk/gralloc.yuv-gb.so`; `core/TreeFixer.kt`).
 
+2026-11-26: the OUYA's controller, on the screen or with a Bluetooth or USB controller: the guest shim answers for an
+"OUYA Game Controller" with the OUYA's ids, whose buttons are read from the firmware's own key layout
+(`native/guestshim/vinput.h`, libaemushim.so rebuilt; `core/OuyaPad.kt`, `core/InputService.kt`, `core/GuestVm.kt`,
+`ui/OuyaOverlay.kt`, `ui/VmActivity.kt`, `res/values/strings_moon.xml`). The OUYA's first-time setup, which needs
+OUYA's closed servers, is marked done in the launcher's preferences (`core/TreeFixer.kt`).
+
 ---
 
 # AEmulator Plus modification notice

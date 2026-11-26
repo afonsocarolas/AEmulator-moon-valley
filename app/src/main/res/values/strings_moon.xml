@@ -91,4 +91,7 @@
     <string name="appdata_done">Copied %1$d files into %2$s. Start the app again.</string>
     <string name="appdata_not_installed">Install %1$s first, then copy its data.</string>
     <string name="appdata_none">No app folder found. Pick the folder named after the app (like com.eamobile.Fifa).</string>
+    <!-- Added 2026-11-26: the OUYA's controller -->
+    <string name="ouya_show">Show OUYA controller</string>
+    <string name="ouya_hide">Hide OUYA controller</string>
 </resources>

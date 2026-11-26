@@ -19,7 +19,12 @@
  *
  * Modified for AEmulator Moon Valley, 2026-11-26: the Xperia Play's touchpads, one multi-touch device "synaptics_touchpad"
  * as Sony's driver makes it. The firmware's input-device-display-associations.xml keeps it off the screen (display -1), so
- * the guest takes it for a touchpad (AINPUT_SOURCE_TOUCHPAD). */
+ * the guest takes it for a touchpad (AINPUT_SOURCE_TOUCHPAD).
+ *
+ * Modified for AEmulator Moon Valley, 2026-11-26: the OUYA's controller, "OUYA Game Controller" on Bluetooth with the
+ * OUYA's vendor and product (0x2836, 0x0001), so the firmware reads its own Vendor_2836_Product_0001.kl. Its keys are the
+ * ones of that file: the app writes their bitmap to a file (core/OuyaPad.kt); sticks and triggers are axes 0..5, the hat
+ * 16 and 17. */
 #ifndef VINPUT_H
 #define VINPUT_H
 
@@ -39,6 +44,9 @@
 #define VI_PEN_FILE "/dev/aemu_spen_state"
 #define VI_ZPAD_NODE "/dev/input/aemu-zeuspad"
 #define VI_ZPAD_SOCKET "/dev/aemu_zeuspad"
+#define VI_OUYA_NODE "/dev/input/aemu-ouya"
+#define VI_OUYA_SOCKET "/dev/aemu_ouya"
+#define VI_OUYA_KEYS "/dev/aemu_ouya_keys"
 #define VI_NONE 0
 #define VI_PAD 1
 #define VI_KBD 2
@@ -47,6 +55,8 @@
 #define VI_ZGAME 5
 #define VI_PEN 6
 #define VI_ZPAD 7
+#define VI_OUYA 8
+#define VI_OUYA_AXIS 32767
 #define VI_ZPAD_W 966
 #define VI_ZPAD_H 360
 #define VI_PAD_MAX 4095
@@ -87,6 +97,7 @@ static const char *vi_socket_of(const char *path) {
     if (vi_equal(path, VI_ZGAME_NODE)) return VI_ZGAME_SOCKET;
     if (vi_equal(path, VI_PEN_NODE)) return VI_PEN_SOCKET;
     if (vi_equal(path, VI_ZPAD_NODE)) return VI_ZPAD_SOCKET;
+    if (vi_equal(path, VI_OUYA_NODE)) return VI_OUYA_SOCKET;
     return 0;
 }
 
@@ -116,9 +127,9 @@ static int vinput_fd(int fd) {
     if (vi_getpeername(fd, &addr, &len) < 0 || addr.family != 1) return VI_NONE;
     unsigned n = 0;
     while (n < sizeof(addr.path) && addr.path[n]) n++;
-    for (int kind = VI_PAD; kind <= VI_ZPAD; kind++) {
+    for (int kind = VI_PAD; kind <= VI_OUYA; kind++) {
         const char *suffix = kind == VI_PAD ? VI_PAD_SOCKET : kind == VI_KBD ? VI_KBD_SOCKET : kind == VI_EPD ? VI_EPD_SOCKET
-                           : kind == VI_ZEUS ? VI_ZEUS_SOCKET : kind == VI_ZGAME ? VI_ZGAME_SOCKET : kind == VI_PEN ? VI_PEN_SOCKET : VI_ZPAD_SOCKET;
+                           : kind == VI_ZEUS ? VI_ZEUS_SOCKET : kind == VI_ZGAME ? VI_ZGAME_SOCKET : kind == VI_PEN ? VI_PEN_SOCKET : kind == VI_ZPAD ? VI_ZPAD_SOCKET : VI_OUYA_SOCKET;
         unsigned sl = 0;
         while (suffix[sl]) sl++;
         if (n < sl) continue;
@@ -159,6 +170,14 @@ static void vi_pen_switch(unsigned char *buf, unsigned len, int only_if_out) {
     if (c[1] & 2) vi_bit(buf, len, 0x13);
 }
 
+/* OUYA: the controller's keys, a bitmap the app wrote (bit n = Linux key n) */
+static void vi_ouya_keys(unsigned char *buf, unsigned len) {
+    long fd = sys3(5 /* open */, (long)VI_OUYA_KEYS, 0, 0);
+    if (fd < 0) return;
+    sys3(3 /* read */, fd, (long)buf, len);
+    sys3(6 /* close */, fd, 0, 0);
+}
+
 /* Xperia Play: Android 2.3 turns D-pad keys with the screen (rotateKeyCode), as the keypads of its time sat in the portrait
  * frame. This pad is held upright whichever way the picture lies. Sony's KeyboardInputMapper::processKey asks at every key
  * whether the device is a USB one (its physical location begins with "usb") and leaves those keys alone. openDevice asks for
@@ -176,6 +195,7 @@ static int vinput_ioctl(int kind, unsigned req, void *arg) {
     if (nr == 2 /* EVIOCGID */ && len == 8) {
         unsigned short *id = arg;
         id[0] = 6 /* BUS_VIRTUAL */; id[1] = 0; id[2] = (unsigned short)(kind == VI_PAD ? 2 : kind == VI_KBD ? 3 : kind == VI_EPD ? 4 : kind == VI_ZEUS ? 5 : kind == VI_ZGAME ? 6 : kind == VI_PEN ? 7 : 8); id[3] = 1;
+        if (kind == VI_OUYA) { id[0] = 5 /* BUS_BLUETOOTH */; id[1] = 0x2836; id[2] = 0x0001; }
         return 0;
     }
     if (nr >= 6 && nr <= 8) { /* name, physical path, unique ID */
@@ -185,7 +205,8 @@ static int vinput_ioctl(int kind, unsigned req, void *arg) {
                       : kind == VI_ZEUS ? (nr == 6 ? "keypad-zeus" : nr == 7 ? (vi_zeus_opened ? "usb/zeus" : "aemu/zeus") : "aemu-zeus")
                       : kind == VI_ZGAME ? (nr == 6 ? "keypad-game-zeus" : nr == 7 ? "aemu/zeusgame" : "aemu-zeusgame")
                       : kind == VI_PEN ? (nr == 6 ? "sec_e-pen" : nr == 7 ? "aemu/spen" : "aemu-spen")
-                                        : (nr == 6 ? "synaptics_touchpad" : nr == 7 ? "aemu/zeuspad" : "aemu-zeuspad");
+                      : kind == VI_ZPAD ? (nr == 6 ? "synaptics_touchpad" : nr == 7 ? "aemu/zeuspad" : "aemu-zeuspad")
+                                        : (nr == 6 ? "OUYA Game Controller" : nr == 7 ? "aemu/ouya" : "aemu-ouya");
         unsigned i = 0;
         if (!len) return 0;
         while (i + 1 < len && s[i]) { b[i] = s[i]; i++; }
@@ -200,7 +221,7 @@ static int vinput_ioctl(int kind, unsigned req, void *arg) {
         if (nr == 9 && kind == VI_EPD) vi_bit(b, len, 1 /* INPUT_PROP_DIRECT: a touch screen */);
         if (nr == 0x20) { /* EV bits */
             vi_bit(b, len, 0 /* EV_SYN */); vi_bit(b, len, 1 /* EV_KEY */);
-            if (kind == VI_PAD || kind == VI_EPD || kind == VI_PEN || kind == VI_ZPAD) vi_bit(b, len, 3 /* EV_ABS */);
+            if (kind == VI_PAD || kind == VI_EPD || kind == VI_PEN || kind == VI_ZPAD || kind == VI_OUYA) vi_bit(b, len, 3 /* EV_ABS */);
             if (kind == VI_ZEUS || kind == VI_PEN) vi_bit(b, len, 5 /* EV_SW */);
         }
         if (nr == 0x25 && kind == VI_ZEUS) { vi_bit(b, len, 0 /* SW_LID */); vi_zeus_opened = 1; }
@@ -214,17 +235,29 @@ static int vinput_ioctl(int kind, unsigned req, void *arg) {
             else if (kind == VI_PEN) { /* pen, rubber, touch, side button */
                 vi_bit(b, len, 320); vi_bit(b, len, 321); vi_bit(b, len, 330); vi_bit(b, len, 331);
             }
+            else if (kind == VI_OUYA) vi_ouya_keys(b, len);
             else if (kind == VI_ZGAME) { for (unsigned k = 0; vi_zgame_keys[k]; k++) vi_bit(b, len, vi_zgame_keys[k]); }
             else { vi_bit(b, len, 272 /* BTN_LEFT */); vi_bit(b, len, 273 /* BTN_RIGHT */); vi_bit(b, len, 330 /* BTN_TOUCH */); }
         }
         if (nr == 0x23 && (kind == VI_PAD || kind == VI_EPD)) { /* ABS bits: protocol A multi-touch */
             vi_bit(b, len, 48); vi_bit(b, len, 53); vi_bit(b, len, 54); vi_bit(b, len, 57); vi_bit(b, len, 58);
         }
+        if (nr == 0x23 && kind == VI_OUYA) { for (unsigned k = 0; k < 6; k++) vi_bit(b, len, k); vi_bit(b, len, 16); vi_bit(b, len, 17); }
         if (nr == 0x23 && kind == VI_ZPAD) { /* touch major, minor, orientation, x, y, tracking id */
             vi_bit(b, len, 48); vi_bit(b, len, 49); vi_bit(b, len, 52); vi_bit(b, len, 53); vi_bit(b, len, 54); vi_bit(b, len, 57);
         }
         if (nr == 0x23 && kind == VI_PEN) { vi_bit(b, len, 0); vi_bit(b, len, 1); vi_bit(b, len, 24 /* ABS_PRESSURE */); }
         return (int)len;
+    }
+    if (nr >= 0x40 && nr < 0x80 && kind == VI_OUYA) { /* sticks and triggers -32768..32767, the hat -1..1 */
+        int *a = arg;
+        unsigned axis = nr - 0x40, words = len / 4;
+        for (unsigned i = 0; i < words && i < 6; i++) a[i] = 0;
+        if (words < 3) return fail(-22 /* EINVAL */);
+        if (axis < 6) { a[1] = -VI_OUYA_AXIS - 1; a[2] = VI_OUYA_AXIS; }
+        else if (axis == 16 || axis == 17) { a[1] = -1; a[2] = 1; }
+        else return fail(-22 /* EINVAL */);
+        return 0;
     }
     if (nr >= 0x40 && nr < 0x80 && kind == VI_ZPAD) {
         int *a = arg;

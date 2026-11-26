@@ -1200,6 +1200,7 @@ class GuestVm(val ctx: Context, val img: GuestImage, val lowPowerBoot: Boolean =
         input.spen = !recoveryMode && !nativeUi && !mouseKeyboardActive && SPen.supported(paths.root, img.api)
         input.spenDevice = img.arch == GuestArch.ARM && engine != Engine.N64
         input.spenSwitches = if (input.spen) SPen.switches(paths.root, img.api) else emptyList()
+        input.ouya = !recoveryMode && !nativeUi && OuyaPad.supported(paths.root, img.arch == GuestArch.ARM, engine)
         input.gamepad = XperiaPad.supported(paths.root, img.api, img.arch == GuestArch.ARM, engine) && !recoveryMode && !nativeUi
         input.serve()
         if (engine != Engine.N64) vibration.serve()   // 64-bit guests get vibration through Sensors

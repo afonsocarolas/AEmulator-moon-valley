@@ -226,6 +226,7 @@ class TreeFixer(
         if (owners) seedOwners()
         installEngineFiles()
         runCatching { grallocYuv23() }.onFailure { log("gralloc: ${it.message}") }
+        runCatching { ouyaSetupDone() }.onFailure { log("OUYA: ${it.message}") }
         installSensorHal()
         runCatching { installHinge() }.onFailure { log("dual screen: ${it.message}") }
         File(root, "system/framework/aemu-setup.jar").let { dst ->
@@ -4831,6 +4832,33 @@ class TreeFixer(
         fw.setReadable(true, false)
         installAsset(YUV23, hw)
         log("gralloc: firmware gralloc behind the 2.3 YUV wrapper (video buffers)")
+    }
+
+    /**
+     * Moon Valley, 2026-11-26: the OUYA's first-time setup is marked done (see OuyaPad.setupDonePrefs). Once only: the
+     * launcher removes the entry when it has read it. Needs the launcher's data folder, so from the second boot on.
+     */
+    private fun ouyaSetupDone() {
+        if (!File(root, "system/app/OUYALauncher.apk").isFile) return
+        val dir = File(root, "data/data/tv.ouya.console")
+        val stamp = File(dir, ".aemu-setup-done")
+        if (!dir.isDirectory || stamp.exists()) return
+        val prefsDir = File(dir, "shared_prefs")
+        val prefs = File(prefsDir, "launcher_prefs.xml")
+        val text = OuyaPad.setupDonePrefs(if (prefs.isFile) prefs.readText() else null)
+        val made = !prefsDir.isDirectory
+        prefsDir.mkdirs()
+        if (text != null) prefs.writeText(text)
+        val uid = AppDataImport.uidOf(root, "tv.ouya.console")
+        val rows = StringBuilder()
+        for (f in listOfNotNull(prefsDir.takeIf { made }, prefs.takeIf { text != null })) {
+            f.setReadable(true, false); f.setWritable(true, false); if (f.isDirectory) f.setExecutable(true, false)
+            val st = runCatching { Os.lstat(f.absolutePath) }.getOrNull() ?: continue
+            if (uid != null) rows.append(String.format("%016x %016x %08x %08x\n", st.st_dev, st.st_ino, uid, uid))
+        }
+        if (rows.isNotEmpty()) paths.owners.appendText(rows.toString())
+        stamp.writeText("")
+        log("OUYA: first-time setup marked done (its account servers are gone)")
     }
 
     private fun assetSize(a: String): Long = runCatching { eaSize(a) }.getOrDefault(-1L)
