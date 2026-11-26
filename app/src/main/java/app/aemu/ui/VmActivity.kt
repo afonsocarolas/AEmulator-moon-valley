@@ -63,6 +63,7 @@ import androidx.compose.material.icons.rounded.Lan
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Draw
+import androidx.compose.material.icons.rounded.DriveFolderUpload
 import androidx.compose.material.icons.rounded.Gamepad
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.History
@@ -1348,6 +1349,53 @@ open class VmActivity : ComponentActivity() {
         }
     }
 
+    // Moon Valley, 2026-11-26: a game's data folder for /data/data/<package> (see core/AppDataImport)
+    private val pickAppData = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
+        if (tree == null) return@registerForActivityResult
+        toast(getString(R.string.appdata_start))
+        thread {
+            val stage = java.io.File(vm.paths.root, "data/local/tmp/aemu-appdata")
+            val msg = runCatching {
+                stage.deleteRecursively(); stage.mkdirs()
+                val top = android.provider.DocumentsContract.getTreeDocumentId(tree)
+                val name = top.substringAfterLast('/').substringAfterLast(':').ifEmpty { "picked" }
+                copyTree(tree, top, java.io.File(stage, name))
+                val found = app.aemu.core.AppDataImport.locate(java.io.File(stage, name)) {
+                    java.io.File(vm.paths.root, "data/data/$it").isDirectory }
+                if (found == null) getString(R.string.appdata_none) else {
+                    val (pkg, dir) = found
+                    // the game must not be running while its files are replaced
+                    runCatching { vm.guestShell("am force-stop $pkg", 30_000) }
+                    when (val r = app.aemu.core.AppDataImport.install(vm.paths.root, pkg, dir, vm.paths.owners, vm::log)) {
+                        is app.aemu.core.AppDataImport.Result.Copied -> getString(R.string.appdata_done, r.files, r.pkg)
+                        is app.aemu.core.AppDataImport.Result.NotInstalled -> getString(R.string.appdata_not_installed, r.pkg)
+                        else -> getString(R.string.appdata_none)
+                    }
+                }
+            }.getOrElse { vm.log("app data: ${it.message}"); getString(R.string.m_failed) + ": " + it.message }
+            stage.deleteRecursively()
+            toast(msg)
+        }
+    }
+
+    /** Copies a picked folder's document [doc] (and everything in it) to [to]. */
+    private fun copyTree(tree: android.net.Uri, doc: String, to: java.io.File) {
+        to.mkdirs()
+        val kids = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(tree, doc)
+        val cols = arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME, android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE)
+        contentResolver.query(kids, cols, null, null, null)?.use { c ->
+            while (c.moveToNext()) {
+                val id = c.getString(0); val name = c.getString(1)?.replace('/', '_') ?: continue
+                if (name == "." || name == "..") continue
+                if (c.getString(2) == android.provider.DocumentsContract.Document.MIME_TYPE_DIR) copyTree(tree, id, java.io.File(to, name))
+                else contentResolver.openInputStream(android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, id))?.use { i ->
+                    java.io.File(to, name).outputStream().use { o -> i.copyTo(o) }
+                }
+            }
+        }
+    }
+
     private fun sendSms(from: String, body: String) {
         thread {
             // preferred: through the fake modem, the guest's telephony receives it like a real SMS (no shell, no `content` tool)
@@ -1803,6 +1851,8 @@ open class VmActivity : ComponentActivity() {
                         enabled = running && vm.img.api >= 19, onClick = { menu = false; dialog = Dlg.BATTERY })
                     DropdownMenuItem(text = { Text(stringResource(R.string.m_install_apk)) }, leadingIcon = { Icon(Icons.Rounded.InstallMobile, null) },
                         enabled = running, onClick = { menu = false; pickApk.launch(arrayOf("application/vnd.android.package-archive", "application/octet-stream", "*/*")) })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.appdata_menu)) }, leadingIcon = { Icon(Icons.Rounded.DriveFolderUpload, null) },
+                        enabled = running, onClick = { menu = false; pickAppData.launch(null) })
                     DropdownMenuItem(text = { Text(stringResource(R.string.m_device)) }, leadingIcon = { Icon(Icons.Rounded.Tune, null) },
                         enabled = running && vm.img.api >= 17, onClick = { menu = false; dialog = Dlg.DEVICE })
                     DropdownMenuItem(text = { Text(stringResource(R.string.thermal_menu)) }, leadingIcon = { Icon(Icons.Rounded.Thermostat, null) },

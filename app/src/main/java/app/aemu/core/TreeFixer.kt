@@ -225,6 +225,7 @@ class TreeFixer(
     fun fixup(owners: Boolean = true) {
         if (owners) seedOwners()
         installEngineFiles()
+        runCatching { grallocYuv23() }.onFailure { log("gralloc: ${it.message}") }
         installSensorHal()
         runCatching { installHinge() }.onFailure { log("dual screen: ${it.message}") }
         File(root, "system/framework/aemu-setup.jar").let { dst ->
@@ -3793,6 +3794,11 @@ class TreeFixer(
             val g = File(root, "system/lib/hw/gralloc.default.so")
             g.delete(); parkedGralloc.renameTo(g)
         }
+        // Moon Valley, 2026-11-26: the firmware gralloc behind the 2.3 YUV wrapper (see grallocYuv23) is put back first, so
+        // every check below sees the firmware's own module
+        File(root, YUV23_FIRMWARE).let { fw ->
+            if (fw.isFile) { val hw = File(root, "system/lib/hw/gralloc.default.so"); hw.delete(); fw.renameTo(hw) }
+        }
         // gralloc.default, который выделяет память через ION (MediaTek и др.), без ядра не работает:
         // устройство выделения получается пустым и SurfaceFlinger падает — ставим gralloc движка
         val romGralloc = File(root, "system/lib/hw/gralloc.default.so")
@@ -4807,6 +4813,24 @@ class TreeFixer(
                 if (!it.isFile || !it.readBytes().contentEquals(gz)) it.writeBytes(gz)
             } else if (!it.isFile || it.readText() != text) it.writeText(text)
         }
+    }
+
+    /**
+     * Moon Valley, 2026-11-26: Android 2.3 firmware that keeps its own default gralloc (it allocates RGB only; the vendor's
+     * YUV-capable one is set aside) gets native/grallocwrap/gralloc_gb.c in front of it, so a video window gets a buffer:
+     * FIFA 10 on the Xperia Play waited on a black screen for its intro movie. Broadcom firmware keeps its gralloc as it is.
+     */
+    private fun grallocYuv23() {
+        val hw = File(root, "system/lib/hw/gralloc.default.so")
+        val fw = File(root, YUV23_FIRMWARE)
+        if (engine != Engine.KK || img.arch != GuestArch.ARM || img.api !in 9..10 || !hw.isFile || isLink(hw)) return
+        if (File(root, "system/.aemu-parked/system#lib#hw#gralloc.default.so.ion").isFile) return
+        if (usesGememalloc(runCatching { hw.readBytes() }.getOrNull())) return
+        if (assetSize(YUV23) <= 0) return
+        if (!fw.isFile && !hw.renameTo(fw)) return
+        fw.setReadable(true, false)
+        installAsset(YUV23, hw)
+        log("gralloc: firmware gralloc behind the 2.3 YUV wrapper (video buffers)")
     }
 
     private fun assetSize(a: String): Long = runCatching { eaSize(a) }.getOrDefault(-1L)
@@ -6923,6 +6947,8 @@ val db = settingsDb()
         private const val MTK_HAL_MODULE_ID = "libaudio"
 
         private const val OPEN_GL = "engines/kk/libGLES_aemu.so"
+        private const val YUV23 = "engines/kk/gralloc.yuv-gb.so"
+        private const val YUV23_FIRMWARE = "system/lib/libgralloc_firmware.so"
         private const val HWC_FB = "engines/kk/hwcomposer.default.so"
         /** Мастера первого запуска: Samsung, Google, AOSP, MIUI, HTC, Sony */
         val SETUP_WIZARDS = listOf(

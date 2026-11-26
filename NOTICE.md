@@ -52,6 +52,13 @@ libaemushim.so rebuilt); on the arm64 engine the touch screen reports the pen (`
 shim answers for Sony's "synaptics_touchpad" (`native/guestshim/vinput.h`, libaemushim.so rebuilt; `core/XperiaPad.kt`,
 `core/InputService.kt`, `ui/GamepadOverlay.kt`, `ui/VmActivity.kt`).
 
+2026-11-26: "Copy app data…" in the machine's menu puts a game's data folder into /data/data/<package> and gives its files
+to the app (`core/AppDataImport.kt`, `ui/VmActivity.kt`, `res/values/strings_moon.xml`).
+
+2026-11-26: Android 2.3 firmware that keeps its own default gralloc gets a small wrapper in front of it that allocates
+video (YUV) buffers too; FIFA 10 on the Xperia Play stayed black waiting for its intro movie
+(`native/grallocwrap/gralloc_gb.c`, `build-gb.sh`, asset `engines/kk/gralloc.yuv-gb.so`; `core/TreeFixer.kt`).
+
 ---
 
 # AEmulator Plus modification notice

@@ -85,4 +85,10 @@
     <string name="spen_finger">Finger is the pen</string>
     <string name="spen_hover">Hold the pen above the screen</string>
     <string name="spen_side">S Pen button</string>
+    <!-- Added 2026-11-26: an app's data folder copied into the machine -->
+    <string name="appdata_menu">Copy app data…</string>
+    <string name="appdata_start">Copying the app\'s data…</string>
+    <string name="appdata_done">Copied %1$d files into %2$s. Start the app again.</string>
+    <string name="appdata_not_installed">Install %1$s first, then copy its data.</string>
+    <string name="appdata_none">No app folder found. Pick the folder named after the app (like com.eamobile.Fifa).</string>
 </resources>
