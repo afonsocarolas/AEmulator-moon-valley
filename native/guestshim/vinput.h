@@ -15,7 +15,11 @@
  *
  * Modified for AEmulator Moon Valley, 2026-11-25: the S Pen of Samsung's Galaxy Note devices, as their Wacom digitizer
  * declares itself ("sec_e-pen"), with the switch that tells whether the pen is out of its slot. The app makes the node only
- * for such a firmware and keeps the state, and which switch code the firmware uses, in a file (core/SPen.kt). */
+ * for such a firmware and keeps the state, and which switch code the firmware uses, in a file (core/SPen.kt).
+ *
+ * Modified for AEmulator Moon Valley, 2026-11-26: the Xperia Play's touchpads, one multi-touch device "synaptics_touchpad"
+ * as Sony's driver makes it. The firmware's input-device-display-associations.xml keeps it off the screen (display -1), so
+ * the guest takes it for a touchpad (AINPUT_SOURCE_TOUCHPAD). */
 #ifndef VINPUT_H
 #define VINPUT_H
 
@@ -33,6 +37,8 @@
 #define VI_PEN_NODE "/dev/input/aemu-spen"
 #define VI_PEN_SOCKET "/dev/aemu_spen"
 #define VI_PEN_FILE "/dev/aemu_spen_state"
+#define VI_ZPAD_NODE "/dev/input/aemu-zeuspad"
+#define VI_ZPAD_SOCKET "/dev/aemu_zeuspad"
 #define VI_NONE 0
 #define VI_PAD 1
 #define VI_KBD 2
@@ -40,6 +46,9 @@
 #define VI_ZEUS 4
 #define VI_ZGAME 5
 #define VI_PEN 6
+#define VI_ZPAD 7
+#define VI_ZPAD_W 966
+#define VI_ZPAD_H 360
 #define VI_PAD_MAX 4095
 #define VI_PEN_MAX 16383
 #define VI_PEN_PRESSURE 1023
@@ -77,6 +86,7 @@ static const char *vi_socket_of(const char *path) {
     if (vi_equal(path, VI_ZEUS_NODE)) return VI_ZEUS_SOCKET;
     if (vi_equal(path, VI_ZGAME_NODE)) return VI_ZGAME_SOCKET;
     if (vi_equal(path, VI_PEN_NODE)) return VI_PEN_SOCKET;
+    if (vi_equal(path, VI_ZPAD_NODE)) return VI_ZPAD_SOCKET;
     return 0;
 }
 
@@ -106,9 +116,9 @@ static int vinput_fd(int fd) {
     if (vi_getpeername(fd, &addr, &len) < 0 || addr.family != 1) return VI_NONE;
     unsigned n = 0;
     while (n < sizeof(addr.path) && addr.path[n]) n++;
-    for (int kind = VI_PAD; kind <= VI_PEN; kind++) {
+    for (int kind = VI_PAD; kind <= VI_ZPAD; kind++) {
         const char *suffix = kind == VI_PAD ? VI_PAD_SOCKET : kind == VI_KBD ? VI_KBD_SOCKET : kind == VI_EPD ? VI_EPD_SOCKET
-                           : kind == VI_ZEUS ? VI_ZEUS_SOCKET : kind == VI_ZGAME ? VI_ZGAME_SOCKET : VI_PEN_SOCKET;
+                           : kind == VI_ZEUS ? VI_ZEUS_SOCKET : kind == VI_ZGAME ? VI_ZGAME_SOCKET : kind == VI_PEN ? VI_PEN_SOCKET : VI_ZPAD_SOCKET;
         unsigned sl = 0;
         while (suffix[sl]) sl++;
         if (n < sl) continue;
@@ -165,7 +175,7 @@ static int vinput_ioctl(int kind, unsigned req, void *arg) {
     if (nr == 1 /* EVIOCGVERSION */ && len == 4) { *(unsigned *)b = 0x10001; return 0; }
     if (nr == 2 /* EVIOCGID */ && len == 8) {
         unsigned short *id = arg;
-        id[0] = 6 /* BUS_VIRTUAL */; id[1] = 0; id[2] = (unsigned short)(kind == VI_PAD ? 2 : kind == VI_KBD ? 3 : kind == VI_EPD ? 4 : kind == VI_ZEUS ? 5 : kind == VI_ZGAME ? 6 : 7); id[3] = 1;
+        id[0] = 6 /* BUS_VIRTUAL */; id[1] = 0; id[2] = (unsigned short)(kind == VI_PAD ? 2 : kind == VI_KBD ? 3 : kind == VI_EPD ? 4 : kind == VI_ZEUS ? 5 : kind == VI_ZGAME ? 6 : kind == VI_PEN ? 7 : 8); id[3] = 1;
         return 0;
     }
     if (nr >= 6 && nr <= 8) { /* name, physical path, unique ID */
@@ -174,7 +184,8 @@ static int vinput_ioctl(int kind, unsigned req, void *arg) {
                       : kind == VI_EPD ? (nr == 6 ? "bs_virtual_ts" : nr == 7 ? "aemu/epdtouch" : "aemu-epdtouch")
                       : kind == VI_ZEUS ? (nr == 6 ? "keypad-zeus" : nr == 7 ? (vi_zeus_opened ? "usb/zeus" : "aemu/zeus") : "aemu-zeus")
                       : kind == VI_ZGAME ? (nr == 6 ? "keypad-game-zeus" : nr == 7 ? "aemu/zeusgame" : "aemu-zeusgame")
-                                        : (nr == 6 ? "sec_e-pen" : nr == 7 ? "aemu/spen" : "aemu-spen");
+                      : kind == VI_PEN ? (nr == 6 ? "sec_e-pen" : nr == 7 ? "aemu/spen" : "aemu-spen")
+                                        : (nr == 6 ? "synaptics_touchpad" : nr == 7 ? "aemu/zeuspad" : "aemu-zeuspad");
         unsigned i = 0;
         if (!len) return 0;
         while (i + 1 < len && s[i]) { b[i] = s[i]; i++; }
@@ -189,7 +200,7 @@ static int vinput_ioctl(int kind, unsigned req, void *arg) {
         if (nr == 9 && kind == VI_EPD) vi_bit(b, len, 1 /* INPUT_PROP_DIRECT: a touch screen */);
         if (nr == 0x20) { /* EV bits */
             vi_bit(b, len, 0 /* EV_SYN */); vi_bit(b, len, 1 /* EV_KEY */);
-            if (kind == VI_PAD || kind == VI_EPD || kind == VI_PEN) vi_bit(b, len, 3 /* EV_ABS */);
+            if (kind == VI_PAD || kind == VI_EPD || kind == VI_PEN || kind == VI_ZPAD) vi_bit(b, len, 3 /* EV_ABS */);
             if (kind == VI_ZEUS || kind == VI_PEN) vi_bit(b, len, 5 /* EV_SW */);
         }
         if (nr == 0x25 && kind == VI_ZEUS) { vi_bit(b, len, 0 /* SW_LID */); vi_zeus_opened = 1; }
@@ -209,8 +220,24 @@ static int vinput_ioctl(int kind, unsigned req, void *arg) {
         if (nr == 0x23 && (kind == VI_PAD || kind == VI_EPD)) { /* ABS bits: protocol A multi-touch */
             vi_bit(b, len, 48); vi_bit(b, len, 53); vi_bit(b, len, 54); vi_bit(b, len, 57); vi_bit(b, len, 58);
         }
+        if (nr == 0x23 && kind == VI_ZPAD) { /* touch major, minor, orientation, x, y, tracking id */
+            vi_bit(b, len, 48); vi_bit(b, len, 49); vi_bit(b, len, 52); vi_bit(b, len, 53); vi_bit(b, len, 54); vi_bit(b, len, 57);
+        }
         if (nr == 0x23 && kind == VI_PEN) { vi_bit(b, len, 0); vi_bit(b, len, 1); vi_bit(b, len, 24 /* ABS_PRESSURE */); }
         return (int)len;
+    }
+    if (nr >= 0x40 && nr < 0x80 && kind == VI_ZPAD) {
+        int *a = arg;
+        unsigned axis = nr - 0x40, words = len / 4;
+        for (unsigned i = 0; i < words && i < 6; i++) a[i] = 0;
+        if (words < 3) return fail(-22 /* EINVAL */);
+        if (axis == 53) a[2] = VI_ZPAD_W - 1;
+        else if (axis == 54) a[2] = VI_ZPAD_H - 1;
+        else if (axis == 48 || axis == 49) a[2] = 15;
+        else if (axis == 52) a[2] = 1;
+        else if (axis == 57) a[2] = 10;
+        else return fail(-22 /* EINVAL */);
+        return 0;
     }
     if (nr >= 0x40 && nr < 0x80 && kind == VI_PEN) {
         int *a = arg;

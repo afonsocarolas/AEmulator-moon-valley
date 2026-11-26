@@ -76,4 +76,18 @@ class XperiaPadTest {
         assertFalse(XperiaPad.supported(root, 10, false, Engine.KK))
         assertFalse(XperiaPad.supported(root, 19, true, Engine.KK))
     }
+
+    @Test fun touchpads() {
+        assertEquals(XperiaPad.Touch(1, 0, 359), XperiaPad.padPoint(1, 0f, 0f))          // top left of the drawing: the surface's y runs up
+        assertEquals(XperiaPad.Touch(2, 965, 0), XperiaPad.padPoint(2, 1f, 1f))
+        assertNull(XperiaPad.stickPoint(10, 0.1f, 0.1f, 0.25f))
+        val s = XperiaPad.stickPoint(10, 1f, 0f, 0.25f)!!
+        assertEquals(XperiaPad.MIDDLE_Y, s.y); assertTrue(s.x > XperiaPad.RIGHT_X + 150 && s.x < XperiaPad.PAD_W)
+        assertTrue(XperiaPad.stickPoint(10, 0f, -1f, 0.25f)!!.y > XperiaPad.MIDDLE_Y)    // stick up: up on the pad
+        assertEquals(listOf(listOf(3, 57, 1), listOf(3, 53, 100), listOf(3, 54, 50), listOf(3, 48, 6), listOf(3, 49, 5), listOf(3, 52, 1),
+            listOf(0, 2, 0), listOf(0, 0, 0)), events(XperiaPad.touchFrame(listOf(XperiaPad.Touch(1, 100, 50)), 1)))
+        assertEquals(listOf(listOf(0, 2, 0), listOf(0, 0, 0)), events(XperiaPad.touchFrame(emptyList(), 1)))
+        val h = File("../native/guestshim/vinput.h"); assumeTrue(h.isFile)
+        assertTrue("#define VI_ZPAD_W ${XperiaPad.PAD_W}" in h.readText()); assertTrue("#define VI_ZPAD_H ${XperiaPad.PAD_H}" in h.readText())
+    }
 }

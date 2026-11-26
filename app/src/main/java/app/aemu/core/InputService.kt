@@ -180,19 +180,24 @@ class InputService(private val paths: VmPaths, private val log: (String) -> Unit
     private val zeusGameClients = CopyOnWriteArrayList<Client>()
     private val zeusServer = deviceServer("dev/aemu_zeus", "gamepad", zeusClients)
     private val zeusGameServer = deviceServer("dev/aemu_zeusgame", "gamepad (start, select)", zeusGameClients)
+    private val zeusPadClients = CopyOnWriteArrayList<Client>()
+    private val zeusPadServer = deviceServer("dev/aemu_zeuspad", "touchpads", zeusPadClients)
+    /** the fingers on the touchpads, by where they come from (the screen, a controller's stick) */
+    private val padTouches = HashMap<Int, List<XperiaPad.Touch>>()
+    private var padTouchSent: List<XperiaPad.Touch> = emptyList()
     private val lidFile get() = java.io.File(paths.root, "dev/aemu_lid")
     private val padHeld = java.util.EnumSet.noneOf(XperiaPad.Button::class.java)
     @Volatile var slideOpen = false
         private set
 
     private fun serveGamepad() {
-        val nodes = listOf("aemu-zeus", "aemu-zeusgame").map { java.io.File(paths.root, "dev/input/$it") }
-        slideOpen = false; synchronized(this) { padHeld.clear() }
+        val nodes = listOf("aemu-zeus", "aemu-zeusgame", "aemu-zeuspad").map { java.io.File(paths.root, "dev/input/$it") }
+        slideOpen = false; synchronized(this) { padHeld.clear(); padTouches.clear(); padTouchSent = emptyList() }
         if (!gamepad) { nodes.forEach { it.delete() }; return }
         for (n in nodes) { n.parentFile?.mkdirs(); if (!n.exists()) n.createNewFile() }
         runCatching { lidFile.writeText("0"); lidFile.setReadable(true, false) }
-        zeusServer.start(log); zeusGameServer.start(log)
-        log("input: the Xperia Play's gamepad (keypad-zeus, keypad-game-zeus)")
+        zeusServer.start(log); zeusGameServer.start(log); zeusPadServer.start(log)
+        log("input: the Xperia Play's gamepad (keypad-zeus, keypad-game-zeus, synaptics_touchpad)")
     }
 
     @Synchronized
@@ -201,11 +206,22 @@ class InputService(private val paths: VmPaths, private val log: (String) -> Unit
         postTo(if (b.game) zeusGameClients else zeusClients, XperiaPad.key(b, down, System.nanoTime()))
     }
 
+    /** The fingers from [from] on the touchpads (ids 1..10 together with the other sources'). */
+    @Synchronized
+    fun padTouch(from: Int, now: List<XperiaPad.Touch>) {
+        if (!gamepad) return
+        if (now.isEmpty()) padTouches.remove(from) else padTouches[from] = now
+        val all = padTouches.keys.sorted().flatMap { padTouches[it].orEmpty() }.take(10)
+        if (all == padTouchSent) return
+        padTouchSent = all
+        postTo(zeusPadClients, XperiaPad.touchFrame(all, System.nanoTime()))
+    }
+
     /** Slides the gamepad out or in: the state first, the guest reads it again when the event arrives. */
     @Synchronized
     fun slide(open: Boolean) {
         if (!gamepad || open == slideOpen) return
-        if (!open) for (b in padHeld.toList()) padButton(b, false)
+        if (!open) { for (b in padHeld.toList()) padButton(b, false); for (k in padTouches.keys.toList()) padTouch(k, emptyList()) }
         slideOpen = open
         runCatching { lidFile.writeText(if (open) "1" else "0") }.onFailure { log("gamepad: ${it.message}") }
         postTo(zeusClients, XperiaPad.slide(open, System.nanoTime()))
@@ -426,7 +442,8 @@ class InputService(private val paths: VmPaths, private val log: (String) -> Unit
         server.stop()
         trackballServer.stop()
         padServer.stop(); keyboardServer.stop()
-        zeusServer.stop(); zeusGameServer.stop()
+        zeusServer.stop(); zeusGameServer.stop(); zeusPadServer.stop()
+        zeusPadClients.forEach { it.close() }; zeusPadClients.clear()
         penServer.stop(); penClients.forEach { it.close() }; penClients.clear()
         (zeusClients + zeusGameClients).forEach { it.close() }
         zeusClients.clear(); zeusGameClients.clear()

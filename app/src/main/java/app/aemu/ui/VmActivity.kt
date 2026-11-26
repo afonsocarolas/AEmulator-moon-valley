@@ -543,6 +543,11 @@ open class VmActivity : ComponentActivity() {
             }
         }
         root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateGuestLayout?.invoke() }
+        // the gamepad lies on the machine's screen, never under the navigation bar
+        box.addOnLayoutChangeListener { v, l, t, r, b, _, _, _, _ ->
+            val now = android.graphics.Rect(l, t, r, b)
+            if (padArea != now && v.width > 0) padArea = now
+        }
 
         frameCallback = { guest.rings++; guest.poke() }
         vm.onFrame = frameCallback
@@ -726,6 +731,13 @@ open class VmActivity : ComponentActivity() {
 
     private fun penApply() { guest.fingerPen = penFinger; guest.penHovers = penHovers; guest.penButton = penSide }
 
+    /** where the machine's screen is in the window (the gamepad is laid over it) */
+    private var padArea by mutableStateOf<android.graphics.Rect?>(null)
+
+    // where the touchpad fingers come from (see InputService.padTouch)
+    private val PAD_FROM_SCREEN = 0
+    private val PAD_FROM_STICK = 1
+
     private fun hasGamepad() = ::vm.isInitialized && vm.input.gamepad && !vm.recoveryMode
 
     private fun slideGamepad(open: Boolean) {
@@ -759,6 +771,9 @@ open class VmActivity : ComponentActivity() {
             fun axis(a: Int) = event.getAxisValue(a)
             val now = app.aemu.core.XperiaPad.directions(axis(android.view.MotionEvent.AXIS_HAT_X), axis(android.view.MotionEvent.AXIS_HAT_Y), 0.5f) +
                 app.aemu.core.XperiaPad.directions(axis(android.view.MotionEvent.AXIS_X), axis(android.view.MotionEvent.AXIS_Y), 0.5f)
+            // the right stick is a finger on the right touchpad
+            vm.input.padTouch(PAD_FROM_STICK, listOfNotNull(app.aemu.core.XperiaPad.stickPoint(10,
+                axis(android.view.MotionEvent.AXIS_Z), axis(android.view.MotionEvent.AXIS_RZ), 0.25f)))
             if (now != stickHeld) {
                 for (b in stickHeld) if (b !in now) vm.input.padButton(b, false)
                 for (b in now) if (b !in stickHeld) vm.input.padButton(b, true)
@@ -1680,7 +1695,15 @@ open class VmActivity : ComponentActivity() {
             )
             // Moon Valley, 2026-11-25: the Xperia Play's gamepad
             LaunchedEffect(vm) { while (true) { if (padOpen != vm.input.slideOpen) padOpen = vm.input.slideOpen; delay(500) } }
-            if (padOpen && !realPad && !showLog && hasGamepad()) GamepadOverlay(turned = guest.h >= guest.w) { b, down -> vm.input.padButton(b, down) }
+            if (padOpen && !realPad && !showLog && hasGamepad()) Box(Modifier.fillMaxSize()) {
+                val area = padArea
+                val d = androidx.compose.ui.platform.LocalDensity.current
+                Box(if (area == null) Modifier.fillMaxSize() else Modifier.offset { IntOffset(area.left, area.top) }
+                        .size(with(d) { area.width().toDp() }, with(d) { area.height().toDp() })) {
+                    GamepadOverlay(turned = guest.h >= guest.w, onButton = { b, down -> vm.input.padButton(b, down) },
+                        onTouchpad = { vm.input.padTouch(PAD_FROM_SCREEN, it) })
+                }
+            }
             // Moon Valley, 2026-11-25: the S Pen
             LaunchedEffect(vm) {
                 guest.onStylus = { if (penFinger) { penFinger = false; penHovers = false; penApply() } }

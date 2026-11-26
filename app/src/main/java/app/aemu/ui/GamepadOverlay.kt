@@ -49,10 +49,11 @@ private val INK = Color.White
  * sideways), so the buttons are laid out for that: up is the window's right side.
  */
 @Composable
-fun GamepadOverlay(turned: Boolean, onButton: (Button, Boolean) -> Unit) {
+fun GamepadOverlay(turned: Boolean, onButton: (Button, Boolean) -> Unit, onTouchpad: (List<XperiaPad.Touch>) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         val area = if (turned) Modifier.requiredSize(maxHeight, maxWidth).rotate(90f) else Modifier.fillMaxSize()
         val short = minOf(maxWidth, maxHeight)
+        val long = if (turned) maxHeight else maxWidth
         val cluster = (short * 0.42f).coerceIn(128.dp, 190.dp)
         Box(area) {
             Column(Modifier.align(Alignment.BottomStart).padding(start = 20.dp, bottom = 20.dp),
@@ -67,6 +68,10 @@ fun GamepadOverlay(turned: Boolean, onButton: (Button, Boolean) -> Unit) {
                 Zone(Modifier.size(cluster), "Buttons", { x, y -> XperiaPad.face(x, y, 0.25f) }, onButton) { drawFace(it) }
                 Pill("START", Button.START, cluster * 0.5f, onButton, 30.dp)
             }
+            // the touchpads between them, as wide as the space left allows
+            val padW = (long - cluster * 2 - 64.dp).coerceIn(0.dp, 380.dp)
+            if (padW >= 120.dp) Touchpads(Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)
+                .size(padW, padW * XperiaPad.PAD_H.toFloat() / XperiaPad.PAD_W), onTouchpad)
         }
     }
 }
@@ -102,6 +107,37 @@ private fun Zone(modifier: Modifier, label: String, hit: (Float, Float) -> Set<B
             }
         }
     }) { draw(held) }
+}
+
+/** The two round touchpads: every finger anywhere on the surface is reported where it is, also between the circles. */
+@Composable
+private fun Touchpads(modifier: Modifier, onTouch: (List<XperiaPad.Touch>) -> Unit) {
+    var fingers by remember { mutableStateOf(emptyList<Offset>()) }
+    val send by rememberUpdatedState(onTouch)
+    Canvas(modifier.semantics { contentDescription = "Touchpads" }.pointerInput(Unit) {
+        awaitPointerEventScope {
+            try {
+                while (true) {
+                    val e = awaitPointerEvent()
+                    val down = e.changes.filter { it.pressed }
+                    e.changes.forEach { it.consume() }
+                    fingers = down.map { it.position }
+                    send(down.mapIndexed { i, c ->
+                        XperiaPad.padPoint(i + 1, (c.position.x / size.width).coerceIn(0f, 1f), (c.position.y / size.height).coerceIn(0f, 1f))
+                    })
+                }
+            } finally { fingers = emptyList(); send(emptyList()) }
+        }
+    }) {
+        val r = size.height / 2
+        drawRoundRect(PLATE.copy(alpha = 0.25f), cornerRadius = CornerRadius(r))
+        for (cx in listOf(r, size.width - r)) {
+            drawCircle(PLATE.copy(alpha = 0.4f), r * 0.94f, Offset(cx, r))
+            drawCircle(INK.copy(alpha = 0.45f), r * 0.94f, Offset(cx, r), style = Stroke(1.5.dp.toPx()))
+            drawCircle(INK.copy(alpha = 0.3f), r * 0.12f, Offset(cx, r))
+        }
+        for (f in fingers) drawCircle(INK.copy(alpha = 0.7f), r * 0.2f, f)
+    }
 }
 
 @Composable

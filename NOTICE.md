@@ -48,6 +48,10 @@ button and the switch of its slot. The guest shim answers for Samsung's digitize
 libaemushim.so rebuilt); on the arm64 engine the touch screen reports the pen (`core/SPen.kt`, `core/InputService.kt`,
 `core/GuestVm.kt`, `ui/SPenBar.kt`, `ui/GuestScreen.kt`, `ui/VmActivity.kt`, `res/values/strings_moon.xml`).
 
+2026-11-26: the Xperia Play's two touchpads, on the screen with the gamepad or with a controller's right stick: the guest
+shim answers for Sony's "synaptics_touchpad" (`native/guestshim/vinput.h`, libaemushim.so rebuilt; `core/XperiaPad.kt`,
+`core/InputService.kt`, `ui/GamepadOverlay.kt`, `ui/VmActivity.kt`).
+
 ---
 
 # AEmulator Plus modification notice

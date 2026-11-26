@@ -71,6 +71,51 @@ object XperiaPad {
         return b.array()
     }
 
+    /**
+     * Moon Valley, 2026-11-26: the two round touchpads between the D-pad and the buttons. Sony's driver reports one
+     * multi-touch surface of [PAD_W] x [PAD_H] (the size its developer guide gives) for both; the left circle is its left
+     * end, the right one its right end. A contact is in the surface's own units.
+     */
+    data class Touch(val id: Int, val x: Int, val y: Int)
+
+    const val PAD_W = 966
+    const val PAD_H = 360
+    /** the circles' middles and radius, in surface units */
+    const val LEFT_X = PAD_H / 2
+    const val RIGHT_X = PAD_W - PAD_H / 2
+    const val MIDDLE_Y = PAD_H / 2
+    const val RADIUS = PAD_H / 2
+
+    /** A finger at [fx], [fy] (0..1 across the drawn surface, y down) in surface units; the surface's y runs up. */
+    fun padPoint(id: Int, fx: Float, fy: Float) =
+        Touch(id, (fx * (PAD_W - 1)).toInt().coerceIn(0, PAD_W - 1), ((1f - fy) * (PAD_H - 1)).toInt().coerceIn(0, PAD_H - 1))
+
+    /** A controller's stick (-1..1 each way, y down) on the right circle; null inside [dead]. */
+    fun stickPoint(id: Int, x: Float, y: Float, dead: Float): Touch? {
+        if (x * x + y * y < dead * dead) return null
+        val k = minOf(1f, 1f / kotlin.math.sqrt(x * x + y * y)) * (RADIUS - 8)
+        return Touch(id, (RIGHT_X + x * k).toInt(), (MIDDLE_Y - y * k).toInt())
+    }
+
+    /** The touchpad's report: protocol A, as Sony's driver sends it (a lone MT sync when no finger is down). */
+    fun touchFrame(now: List<Touch>, nanos: Long): ByteArray {
+        val b = ByteBuffer.allocate((now.size * 7 + 2) * 16).order(ByteOrder.LITTLE_ENDIAN)
+        fun put(t: Int, c: Int, v: Int) {
+            b.putInt((nanos / 1_000_000_000).toInt()).putInt(((nanos % 1_000_000_000) / 1000).toInt())
+            b.putShort(t.toShort()).putShort(c.toShort()).putInt(v)
+        }
+        for (t in now) {
+            put(3, 57, t.id.coerceIn(1, 10))
+            put(3, 53, t.x.coerceIn(0, PAD_W - 1))
+            put(3, 54, t.y.coerceIn(0, PAD_H - 1))
+            put(3, 48, 6); put(3, 49, 5); put(3, 52, 1)
+            put(0, 2, 0)
+        }
+        if (now.isEmpty()) put(0, 2, 0)
+        put(0, 0, 0)
+        return b.array().copyOf(b.position())
+    }
+
     fun key(b: Button, down: Boolean, nanos: Long) = event(1 /* EV_KEY */, b.code, if (down) 1 else 0, nanos)
     fun slide(open: Boolean, nanos: Long) = event(5 /* EV_SW */, 0 /* SW_LID */, if (open) 0 else 1, nanos)
 
