@@ -65,6 +65,10 @@ video (YUV) buffers too; FIFA 10 on the Xperia Play stayed black waiting for its
 `ui/OuyaOverlay.kt`, `ui/VmActivity.kt`, `res/values/strings_moon.xml`). The OUYA's first-time setup, which needs
 OUYA's closed servers, is marked done in the launcher's preferences (`core/TreeFixer.kt`).
 
+2026-11-27: the on-screen controllers can be arranged (Edit controls: move and size each control, opacity), kept per
+machine (`core/PadLayout.kt`, `ui/PadEdit.kt`, `ui/GamepadOverlay.kt`, `ui/OuyaOverlay.kt`, `ui/VmActivity.kt`,
+`res/values/strings_moon.xml`).
+
 ---
 
 # AEmulator Plus modification notice

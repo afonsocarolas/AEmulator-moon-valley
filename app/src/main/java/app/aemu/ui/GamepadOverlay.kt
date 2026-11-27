@@ -58,19 +58,19 @@ fun GamepadOverlay(turned: Boolean, onButton: (Button, Boolean) -> Unit, onTouch
         Box(area) {
             Column(Modifier.align(Alignment.BottomStart).padding(start = 20.dp, bottom = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Pill("L", Button.L, cluster * 0.62f, onButton)
-                Zone(Modifier.size(cluster), "D-pad", { x, y -> XperiaPad.directions(x, y, 0.22f) }, onButton) { drawDpad(it) }
-                Pill("SELECT", Button.SELECT, cluster * 0.5f, onButton, 30.dp)
+                Pill("L", Button.L, cluster * 0.62f, onButton, modifier = Modifier.editable("L"))
+                Zone(Modifier.editable("dpad").size(cluster), "D-pad", { x, y -> XperiaPad.directions(x, y, 0.22f) }, onButton) { drawDpad(it) }
+                Pill("SELECT", Button.SELECT, cluster * 0.5f, onButton, 30.dp, Modifier.editable("select"))
             }
             Column(Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Pill("R", Button.R, cluster * 0.62f, onButton)
-                Zone(Modifier.size(cluster), "Buttons", { x, y -> XperiaPad.face(x, y, 0.25f) }, onButton) { drawFace(it) }
-                Pill("START", Button.START, cluster * 0.5f, onButton, 30.dp)
+                Pill("R", Button.R, cluster * 0.62f, onButton, modifier = Modifier.editable("R"))
+                Zone(Modifier.editable("face").size(cluster), "Buttons", { x, y -> XperiaPad.face(x, y, 0.25f) }, onButton) { drawFace(it) }
+                Pill("START", Button.START, cluster * 0.5f, onButton, 30.dp, Modifier.editable("start"))
             }
             // the touchpads between them, as wide as the space left allows
             val padW = (long - cluster * 2 - 64.dp).coerceIn(0.dp, 380.dp)
-            if (padW >= 120.dp) Touchpads(Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)
+            if (padW >= 120.dp) Touchpads(Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp).editable("touchpads")
                 .size(padW, padW * XperiaPad.PAD_H.toFloat() / XperiaPad.PAD_W), onTouchpad)
         }
     }
@@ -141,8 +141,9 @@ private fun Touchpads(modifier: Modifier, onTouch: (List<XperiaPad.Touch>) -> Un
 }
 
 @Composable
-private fun Pill(text: String, button: Button, width: Dp, onButton: (Button, Boolean) -> Unit, height: Dp = 40.dp) {
-    Box(contentAlignment = Alignment.Center) {
+private fun Pill(text: String, button: Button, width: Dp, onButton: (Button, Boolean) -> Unit, height: Dp = 40.dp,
+                 modifier: Modifier = Modifier) {
+    Box(modifier, contentAlignment = Alignment.Center) {
         Zone(Modifier.size(width, height), text, { _, _ -> setOf(button) }, onButton) { held ->
             val r = CornerRadius(size.height / 2)
             drawRoundRect(PLATE.copy(alpha = if (held.isEmpty()) 0.45f else 0.8f), cornerRadius = r)

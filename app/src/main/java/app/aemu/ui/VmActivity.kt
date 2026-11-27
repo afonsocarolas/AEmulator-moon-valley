@@ -63,6 +63,7 @@ import androidx.compose.material.icons.rounded.Lan
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Draw
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.DriveFolderUpload
 import androidx.compose.material.icons.rounded.Gamepad
 import androidx.compose.material.icons.rounded.Code
@@ -742,6 +743,10 @@ open class VmActivity : ComponentActivity() {
     // Moon Valley, 2026-11-26: the OUYA's controller (see core/OuyaPad)
     private var ouyaShown by mutableStateOf(true)
     private var ouyaHat = 0 to 0
+
+    // Moon Valley, 2026-11-27: the on-screen controllers as the person arranged them (see core/PadLayout, ui/PadEdit)
+    private val xperiaLayout by lazy { PadEditState(app.aemu.core.PadLayout.load(this, vm.img.id, "xperia")) { app.aemu.core.PadLayout.save(this, vm.img.id, "xperia", it) } }
+    private val ouyaLayout by lazy { PadEditState(app.aemu.core.PadLayout.load(this, vm.img.id, "ouya")) { app.aemu.core.PadLayout.save(this, vm.img.id, "ouya", it) } }
 
     private fun hasOuya() = ::vm.isInitialized && vm.input.ouya && !vm.recoveryMode
 
@@ -1780,9 +1785,12 @@ open class VmActivity : ComponentActivity() {
                 val d = androidx.compose.ui.platform.LocalDensity.current
                 Box(if (area == null) Modifier.fillMaxSize() else Modifier.offset { IntOffset(area.left, area.top) }
                         .size(with(d) { area.width().toDp() }, with(d) { area.height().toDp() })) {
-                    GamepadOverlay(turned = guest.h >= guest.w, onButton = { b, down -> vm.input.padButton(b, down) },
-                        onTouchpad = { vm.input.padTouch(PAD_FROM_SCREEN, it) })
+                    androidx.compose.runtime.CompositionLocalProvider(LocalPadEdit provides xperiaLayout) {
+                        GamepadOverlay(turned = guest.h >= guest.w, onButton = { b, down -> vm.input.padButton(b, down) },
+                            onTouchpad = { vm.input.padTouch(PAD_FROM_SCREEN, it) })
+                    }
                 }
+                if (xperiaLayout.editing) PadEditPanel(xperiaLayout, Modifier.align(Alignment.TopCenter).padding(16.dp))
             }
             // Moon Valley, 2026-11-25: the S Pen
             LaunchedEffect(vm) {
@@ -1800,10 +1808,13 @@ open class VmActivity : ComponentActivity() {
                 val d = androidx.compose.ui.platform.LocalDensity.current
                 Box(if (area == null) Modifier.fillMaxSize() else Modifier.offset { IntOffset(area.left, area.top) }
                         .size(with(d) { area.width().toDp() }, with(d) { area.height().toDp() })) {
-                    OuyaOverlay(onButton = { b, down -> vm.input.ouyaKey(b.android, down) },
-                        onStick = { s, x, y -> if (s == 0) { vm.input.ouyaAxis("X", x); vm.input.ouyaAxis("Y", y) }
-                            else { vm.input.ouyaAxis("Z", x); vm.input.ouyaAxis("RZ", y) } })
+                    androidx.compose.runtime.CompositionLocalProvider(LocalPadEdit provides ouyaLayout) {
+                        OuyaOverlay(onButton = { b, down -> vm.input.ouyaKey(b.android, down) },
+                            onStick = { s, x, y -> if (s == 0) { vm.input.ouyaAxis("X", x); vm.input.ouyaAxis("Y", y) }
+                                else { vm.input.ouyaAxis("Z", x); vm.input.ouyaAxis("RZ", y) } })
+                    }
                 }
+                if (ouyaLayout.editing) PadEditPanel(ouyaLayout, Modifier.align(Alignment.TopCenter).padding(16.dp))
             }
             // Moon Valley, 2026-11-19: the address of browser play
             webPlayUrl?.let { url -> if (webPlayShown) WebPlayDialog(url, onStop = { stopWebPlay() }, onDismiss = { webPlayShown = false }) }
@@ -1924,6 +1935,11 @@ open class VmActivity : ComponentActivity() {
                     if (vm.input.gamepad) DropdownMenuItem(text = { Text(stringResource(if (padOpen) R.string.pad_close else R.string.pad_open)) },
                         leadingIcon = { Icon(Icons.Rounded.Gamepad, null) },
                         enabled = running, onClick = { menu = false; slideGamepad(!padOpen) })
+                    if ((vm.input.ouya && ouyaShown) || (vm.input.gamepad && padOpen && !realPad)) DropdownMenuItem(
+                        text = { Text(stringResource(R.string.padedit_menu)) },
+                        leadingIcon = { Icon(Icons.Rounded.Edit, null) },
+                        enabled = running, onClick = { menu = false
+                            if (vm.input.ouya) ouyaLayout.editing = true else xperiaLayout.editing = true })
                     if (vm.input.ouya) DropdownMenuItem(text = { Text(stringResource(if (ouyaShown) R.string.ouya_hide else R.string.ouya_show)) },
                         leadingIcon = { Icon(Icons.Rounded.Gamepad, null) },
                         enabled = running, onClick = { menu = false; ouyaShown = !ouyaShown })

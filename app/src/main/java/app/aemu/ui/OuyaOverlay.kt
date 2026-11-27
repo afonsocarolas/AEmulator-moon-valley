@@ -58,28 +58,28 @@ fun OuyaOverlay(onButton: (Button, Boolean) -> Unit, onStick: (Int, Float, Float
         val stick = (short * 0.36f).coerceIn(96.dp, 170.dp)
         val cluster = (short * 0.30f).coerceIn(90.dp, 150.dp)
         Row(Modifier.align(Alignment.TopStart).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Pill("L2", Button.L2, onButton); Pill("L1", Button.L1, onButton)
+            Pill("L2", Button.L2, onButton, modifier = Modifier.editable("L2")); Pill("L1", Button.L1, onButton, modifier = Modifier.editable("L1"))
         }
         Row(Modifier.align(Alignment.TopEnd).padding(top = 12.dp, end = 72.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Pill("R1", Button.R1, onButton); Pill("R2", Button.R2, onButton)
+            Pill("R1", Button.R1, onButton, modifier = Modifier.editable("R1")); Pill("R2", Button.R2, onButton, modifier = Modifier.editable("R2"))
         }
         Column(Modifier.align(Alignment.TopCenter).padding(top = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Pill("OUYA", Button.HOME, onButton, 72.dp)
+            Pill("OUYA", Button.HOME, onButton, 72.dp, Modifier.editable("ouya"))
         }
         Column(Modifier.align(Alignment.BottomStart).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Zone(Modifier.size(cluster), "D-pad", { x, y ->
+            Zone(Modifier.editable("dpad").size(cluster), "D-pad", { x, y ->
                 XperiaPad.directions(x, y, 0.22f).mapTo(LinkedHashSet()) { when (it) {
                     XperiaPad.Button.UP -> Button.UP; XperiaPad.Button.DOWN -> Button.DOWN; XperiaPad.Button.LEFT -> Button.LEFT; else -> Button.RIGHT } }
             }, onButton) { drawDpad(it) }
-            Stick(Modifier.size(stick), "Left stick") { x, y -> onStick(0, x, y) }
+            Stick(Modifier.editable("lstick").size(stick), "Left stick") { x, y -> onStick(0, x, y) }
         }
         Column(Modifier.align(Alignment.BottomEnd).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalAlignment = Alignment.End) {
-            Zone(Modifier.size(cluster), "Buttons", { x, y ->
+            Zone(Modifier.editable("face").size(cluster), "Buttons", { x, y ->
                 XperiaPad.face(x, y, 0.25f).mapTo(LinkedHashSet()) { when (it) {
                     XperiaPad.Button.TRIANGLE -> Button.Y; XperiaPad.Button.CROSS -> Button.O; XperiaPad.Button.SQUARE -> Button.U; else -> Button.A } }
             }, onButton) { drawFace(it) }
-            Stick(Modifier.size(stick), "Right stick") { x, y -> onStick(1, x, y) }
+            Stick(Modifier.editable("rstick").size(stick), "Right stick") { x, y -> onStick(1, x, y) }
         }
     }
 }
@@ -145,8 +145,8 @@ private fun Zone(modifier: Modifier, label: String, hit: (Float, Float) -> Set<B
 }
 
 @Composable
-private fun Pill(text: String, button: Button, onButton: (Button, Boolean) -> Unit, width: Dp = 56.dp) {
-    Box(contentAlignment = Alignment.Center) {
+private fun Pill(text: String, button: Button, onButton: (Button, Boolean) -> Unit, width: Dp = 56.dp, modifier: Modifier = Modifier) {
+    Box(modifier, contentAlignment = Alignment.Center) {
         Zone(Modifier.size(width, 34.dp), text, { _, _ -> setOf(button) }, onButton) { held ->
             val r = CornerRadius(size.height / 2)
             drawRoundRect(PLATE.copy(alpha = if (held.isEmpty()) 0.45f else 0.8f), cornerRadius = r)

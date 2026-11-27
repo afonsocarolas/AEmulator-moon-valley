@@ -94,4 +94,11 @@
     <!-- Added 2026-11-26: the OUYA's controller -->
     <string name="ouya_show">Show OUYA controller</string>
     <string name="ouya_hide">Hide OUYA controller</string>
+    <!-- Added 2026-11-27: arranging the on-screen controllers -->
+    <string name="padedit_menu">Edit controls</string>
+    <string name="padedit_hint">Drag a control to move it. Tap one to change its size.</string>
+    <string name="padedit_size">Size</string>
+    <string name="padedit_opacity">Opacity</string>
+    <string name="padedit_reset">Reset</string>
+    <string name="padedit_done">Done</string>
 </resources>
