@@ -178,7 +178,8 @@ class GuestVm(val ctx: Context, val img: GuestImage, val lowPowerBoot: Boolean =
         VmSettings.cleanBaseband(img.settings.baseband).ifBlank { VmSettings.DEFAULT_BASEBAND },
         img.settings.networkType, img.settings.sim, cdmaPlan.cdma, cdmaPlan.lteOnCdma)
     // vold speaks the 6.0 volume protocol when the tree is 6.0 inside, whatever API a preview build reports
-    val vold = VoldStub(paths, img.sdcardPath, ::log, others = img.volumes, api = BionicProbe.ruleApi(paths.root, img.api), onStorageState = ::setStorageState)
+    val vold = VoldStub(paths, img.sdcardPath, ::log, others = img.volumes, api = BionicProbe.ruleApi(paths.root, img.api), onStorageState = ::setStorageState,
+        asecMount = img.exports["ASEC_MOUNTPOINT"] ?: "/mnt/asec")
     /** Android 1.0-2.1 take the card state from this property (Settings > Storage shows "unknown" without it) */
     private fun setStorageState(v: String) { if (img.api in 1..7) props.put(VoldStub.STATE_PROP, v) }
     var onFrame: (() -> Unit)? = null

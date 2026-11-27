@@ -700,6 +700,71 @@ static void *g_primary_win;
 typedef unsigned (*GetAttrFn)(void *dpy, void *config, int attr, int *value);
 typedef unsigned (*ChooseFn)(void *dpy, const GLint *attribs, void **configs, int size, int *num);
 
+/*
+ * Moon Valley, 2026-11-27: eglChooseConfig as EGL says it. The bridge reports in *num every config that matches,
+ * even when it was handed room for fewer (a native game asks for 1: Minecraft - Pocket Edition 0.8.1). The 2.3
+ * libEGL then turns *num configs into its own handles, reads past the ones it got, finds garbage and fails with
+ * EGL_BAD_CONFIG; the game's eglMakeCurrent fails too and its screen stays black. Here the bridge is asked into a
+ * buffer of the full count, at most [size] are handed on, and only configs eglGetConfigs also lists (one it does not
+ * know is swapped for the listed config with the same EGL_CONFIG_ID, or left out).
+ */
+typedef unsigned (*GetConfigsFn)(void *dpy, void **configs, int size, int *num);
+
+__attribute__((visibility("default"))) unsigned eglChooseConfig(void *dpy, const GLint *attribs, void **configs, int size, int *num) {
+    ChooseFn f = (ChooseFn)aemu_split_resolve(IDX_eglChooseConfig);
+    if (!num) return f(dpy, attribs, configs, size, num);
+    int total = 0;
+    if (!f(dpy, attribs, 0, 0, &total)) return 0;
+    if (total <= 0) { *num = 0; return 1; }
+    void **all = (void **)malloc((unsigned)total * sizeof(void *));
+    if (!all) {
+        unsigned r = f(dpy, attribs, configs, size, num);
+        if (r && configs && *num > size) *num = size;
+        return r;
+    }
+    int got = 0;
+    if (!f(dpy, attribs, all, total, &got)) { free(all); return 0; }
+    if (got > total) got = total;
+    if (got < 0) got = 0;
+
+    GetConfigsFn gc = (GetConfigsFn)aemu_split_resolve(IDX_eglGetConfigs);
+    GetAttrFn ga = (GetAttrFn)aemu_split_resolve(IDX_eglGetConfigAttrib);
+    int nk = 0;
+    void **known = 0;
+    if (gc(dpy, 0, 0, &nk) && nk > 0 && (known = (void **)malloc((unsigned)nk * sizeof(void *))) != 0) {
+        int m = 0;
+        if (!gc(dpy, known, nk, &m)) m = 0;
+        nk = m < nk ? (m > 0 ? m : 0) : nk;
+    } else nk = 0;
+
+    int out = 0, fixed = 0;
+    for (int i = 0; i < got; i++) {
+        void *c = all[i];
+        if (known && nk > 0) {
+            int found = 0;
+            for (int k = 0; k < nk && !found; k++) found = known[k] == c;
+            if (!found) {
+                int id = -1, kid = -1;
+                ga(dpy, c, 0x3028 /* EGL_CONFIG_ID */, &id);
+                void *same = 0;
+                for (int k = 0; k < nk && !same; k++) { kid = -1; ga(dpy, known[k], 0x3028, &kid); if (kid == id) same = known[k]; }
+                fixed++;
+                if (!same) continue;
+                c = same;
+            }
+        }
+        if (configs) { if (out >= size) break; configs[out] = c; }
+        out++;
+    }
+    if (got > (configs ? size : got) || fixed)
+        __android_log_print(5, "aemu-split", "eglChooseConfig: %d matched, %d handed on (room for %d), %d not in eglGetConfigs",
+            got, out, configs ? size : -1, fixed);
+    *num = out;
+    free(all);
+    if (known) free(known);
+    return 1;
+}
+
 __attribute__((visibility("default"))) void *eglCreateWindowSurface(void *dpy, void *config, void *win, const GLint *attribs) {
     CreateWinFn f = (CreateWinFn)aemu_split_resolve(IDX_eglCreateWindowSurface);
     if (!is_surfaceflinger() || !win) {

@@ -569,7 +569,10 @@ class VoldStub(
      *  2.1 (API <= 7) has no MountService<->vold state query: Environment.getExternalStorageState() reads the
      *  EXTERNAL_STORAGE_STATE property, which the real mountd / vold sets (the emulator runs neither, so it must). */
     private val onStorageState: ((String) -> Unit)? = null,
+    /** Moon Valley, 2026-11-27: where the firmware mounts apps installed to the SD card (ASEC_MOUNTPOINT) */
+    asecMount: String = "/mnt/asec",
 ) {
+    private val asec = AsecStore(File(paths.root, asecMount.trim('/')), asecMount, log)
     /** 1.0-2.1: plain "command[:argument]\0" lines instead of vold2's numbered replies. mountd (1.0-1.5, socket
      *  "mountd") speaks media_* events, the old vold (1.6-2.1) volume_* ones. */
     private val legacy = api in 1..7
@@ -678,8 +681,8 @@ class VoldStub(
             head == "share" && sub == "status" -> listOf("210 ${args.getOrElse(2) { "ums" }} unavailable")
             head == "share" || head == "unshare" -> listOf("200 Share operation succeeded.")
             head == "storage" && sub == "users" -> listOf("200 Storage user list.")
-            head == "asec" && sub == "list" -> listOf("200 Asec listed.")
-            head == "asec" && sub == "path" -> listOf("211 /mnt/asec/${args.getOrElse(2) { "" }}")
+            // apps installed to the SD card: their containers are real folders (see AsecStore)
+            head == "asec" -> asec.answer(args.drop(1))
             head == "obb" && sub == "list" -> listOf("200 Obb listed.")
             // MountService parses most cryptfs replies with Integer.parseInt(event.getMessage()): the old "200 0 0"
             // made Samsung's DirEncryptService (moveDumpstates, run on BOOT_COMPLETED) throw NumberFormatException

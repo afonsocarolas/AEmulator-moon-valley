@@ -1,4 +1,4 @@
-/* автоматически создано gen.py — не править */
+/* Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё СЃРѕР·РґР°РЅРѕ gen.py вЂ” РЅРµ РїСЂР°РІРёС‚СЊ */
     .syntax unified
     .arm
     .text
@@ -18,16 +18,6 @@ eglBindAPI:
 eglBindTexImage:
     push {r0-r3, lr}
     movw r0, #1
-    bl aemu_split_resolve
-    mov r12, r0
-    pop {r0-r3, lr}
-    bx r12
-    .global eglChooseConfig
-    .type eglChooseConfig,%function
-    .align 2
-eglChooseConfig:
-    push {r0-r3, lr}
-    movw r0, #2
     bl aemu_split_resolve
     mov r12, r0
     pop {r0-r3, lr}

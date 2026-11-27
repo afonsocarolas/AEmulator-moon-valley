@@ -69,6 +69,11 @@ OUYA's closed servers, is marked done in the launcher's preferences (`core/TreeF
 machine (`core/PadLayout.kt`, `ui/PadEdit.kt`, `ui/GamepadOverlay.kt`, `ui/OuyaOverlay.kt`, `ui/VmActivity.kt`,
 `res/values/strings_moon.xml`).
 
+2026-11-27: apps that install to the SD card (Android 2.2 and later, e.g. Minecraft - Pocket Edition) get real secure
+containers from the vold stand-in (`core/AsecStore.kt`, `core/Stubs.kt`, `core/GuestVm.kt`). eglChooseConfig in the
+32-bit GL shim hands on no more configs than it was given room for, all of them ones eglGetConfigs lists (native games
+on 2.3 had a black screen: `native/glsplit/split.c`, `native/glsplit/gen.py`, `assets/engines/kk/libGLES_split.so`).
+
 ---
 
 # AEmulator Plus modification notice
